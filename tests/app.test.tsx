@@ -18,7 +18,7 @@ afterEach(() => {
 });
 
 describe('App navigation and theme controls', () => {
-  it('switches tabs via click between Restoration Lab, Kamera Web, Eksperimen Sinusoid, and Petunjuk & Teori', () => {
+  it('switches tabs via click between Restoration Lab, Kamera Web, Eksperimen Sinusoid, and Petunjuk & Teori', async () => {
     render(<App />);
 
     const labTab = screen.getByRole('tab', { name: 'Restoration Lab' });
@@ -34,20 +34,20 @@ describe('App navigation and theme controls', () => {
     fireEvent.click(cameraTab);
     expect(cameraTab).toHaveAttribute('aria-selected', 'true');
     expect(
-      screen.getByRole('heading', { name: 'Kamera web: deteksi foto asli dan simulasi periodik' }),
+      await screen.findByRole('heading', { name: 'Kamera web: deteksi foto asli dan simulasi periodik' }),
     ).toBeInTheDocument();
 
     fireEvent.click(experimentTab);
     expect(experimentTab).toHaveAttribute('aria-selected', 'true');
     expect(labTab).toHaveAttribute('aria-selected', 'false');
     expect(
-      screen.getByRole('heading', { name: 'Eksperimen dua sinusoid spasial terkontrol' }),
+      await screen.findByRole('heading', { name: 'Eksperimen dua sinusoid spasial terkontrol' }),
     ).toBeInTheDocument();
 
     fireEvent.click(guideTab);
     expect(guideTab).toHaveAttribute('aria-selected', 'true');
     expect(
-      screen.getByRole('heading', {
+      await screen.findByRole('heading', {
         name: 'Petunjuk penggunaan dan dasar teori FFT 2D Notch',
       }),
     ).toBeInTheDocument();
@@ -230,11 +230,11 @@ describe('MetricsTable', () => {
 });
 
 describe('SyntheticExperimentTab numeric input drafting', () => {
-  it('allows typing a negative sign and clearing frequency inputs without snapping prematurely', () => {
+  it('allows typing a negative sign and clearing frequency inputs without snapping prematurely', async () => {
     render(<App />);
     fireEvent.click(screen.getByRole('tab', { name: 'Eksperimen Sinusoid' }));
 
-    const v1Input = screen.getByLabelText(/Frekuensi v1/i) as HTMLInputElement;
+    const v1Input = (await screen.findByLabelText(/Frekuensi v1/i)) as HTMLInputElement;
     fireEvent.change(v1Input, { target: { value: '-' } });
     expect(v1Input.value).toBe('-');
     fireEvent.change(v1Input, { target: { value: '-14' } });
