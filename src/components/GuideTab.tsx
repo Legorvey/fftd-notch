@@ -6,11 +6,14 @@ export function GuideTab() {
       aria-labelledby="tab-guide"
       className="section-stack"
     >
-      <div>
-        <h2 className="page-heading">Petunjuk penggunaan dan dasar teori FFT 2D Notch</h2>
-        <p className="page-lead">
-          Ringkasan alur kerja, konvensi koordinat spektrum, persamaan Gaussian notch-reject mask, serta batasan metode untuk proyek Pemrosesan Sinyal Digital Kelompok H.
-        </p>
+      <div className="workspace-hero">
+        <div>
+          <h2 className="page-heading">Petunjuk penggunaan dan dasar teori FFT 2D Notch</h2>
+          <p className="page-lead">
+            Ringkasan alur kerja, konvensi koordinat spektrum, persamaan Gaussian notch-reject mask, serta batasan metode untuk proyek Pemrosesan Sinyal Digital Kelompok H.
+          </p>
+        </div>
+        <div className="telemetry-pill">Dokumentasi Teknis</div>
       </div>
 
       <div className="guide-grid">

@@ -214,11 +214,20 @@ export function CameraTab() {
       aria-labelledby="tab-camera"
       className="section-stack"
     >
-      <div>
-        <h2 className="page-heading">Kamera web: deteksi foto asli dan simulasi periodik</h2>
-        <p className="page-lead">
-          Ambil foto langsung dari kamera web atau unggah foto perangkat. Mode foto asli mencari puncak periodik dominan secara otomatis; mode simulasi menambahkan dua sinusoid terkontrol untuk menguji PSNR dan SSIM.
-        </p>
+      <div className="workspace-hero">
+        <div>
+          <h2 className="page-heading">Kamera web: deteksi foto asli dan simulasi periodik</h2>
+          <p className="page-lead">
+            Ambil foto langsung dari kamera web atau unggah foto perangkat. Mode foto asli mencari puncak periodik dominan secara otomatis; mode simulasi menambahkan dua sinusoid terkontrol untuk menguji PSNR dan SSIM.
+          </p>
+        </div>
+        <div className="telemetry-pill" aria-live="polite">
+          {captured
+            ? `${captured.width} x ${captured.height} px · ${mode === 'simulation' ? 'Simulasi' : 'Foto asli'}`
+            : streamActive
+              ? 'Kamera aktif'
+              : 'Kamera siaga'}
+        </div>
       </div>
 
       <div className="workbench-split">

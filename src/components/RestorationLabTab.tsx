@@ -421,11 +421,18 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
       aria-labelledby="tab-lab"
       className="section-stack"
     >
-      <div>
-        <h2 className="page-heading">Pemulihan citra dengan pola gangguan periodik</h2>
-        <p className="page-lead">
-          Unggah gambar yang memiliki garis atau pola berulang, lalu klik puncak terang pada spektrum FFT 2D atau pilih kandidat semi-otomatis untuk menerapkan Gaussian notch filter.
-        </p>
+      <div className="workspace-hero">
+        <div>
+          <h2 className="page-heading">Pemulihan citra dengan pola gangguan periodik</h2>
+          <p className="page-lead">
+            Unggah gambar yang memiliki garis atau pola berulang, lalu klik puncak terang pada spektrum FFT 2D atau aktifkan deteksi otomatis untuk menerapkan Gaussian notch filter.
+          </p>
+        </div>
+        <div className="telemetry-pill" aria-live="polite">
+          {corrupted
+            ? `${corrupted.width} x ${corrupted.height} px · ${centers.length} pasang notch · sigma ${notchSigma.toFixed(1)}`
+            : 'Siap menerima citra'}
+        </div>
       </div>
 
       <div className="panel">

@@ -263,11 +263,18 @@ export function SyntheticExperimentTab() {
       aria-labelledby="tab-experiment"
       className="section-stack"
     >
-      <div>
-        <h2 className="page-heading">Eksperimen dua sinusoid spasial terkontrol</h2>
-        <p className="page-lead">
-          Tambahkan dua gangguan sinusoid pada bin frekuensi yang diketahui, lalu ukur secara kuantitatif performa Gaussian notch filter dibandingkan Gaussian blur serta sensitivitas terhadap lebar sigma.
-        </p>
+      <div className="workspace-hero">
+        <div>
+          <h2 className="page-heading">Eksperimen dua sinusoid spasial terkontrol</h2>
+          <p className="page-lead">
+            Tambahkan dua gangguan sinusoid pada bin frekuensi yang diketahui, lalu ukur secara kuantitatif performa Gaussian notch filter dibandingkan Gaussian blur serta sensitivitas terhadap lebar sigma.
+          </p>
+        </div>
+        <div className="telemetry-pill" aria-live="polite">
+          {clean
+            ? `${clean.width} x ${clean.height} px · (u1=${safeU1}, v1=${safeV1}) · (u2=${safeU2}, v2=${safeV2})`
+            : 'Menunggu citra referensi'}
+        </div>
       </div>
 
       <div className="panel section-stack" style={{ gap: '1rem' }}>
