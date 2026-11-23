@@ -52,7 +52,8 @@ Notch filtering dirancang khusus untuk **gangguan periodik** yang muncul sebagai
 
 ## Fitur Utama Aplikasi Web
 
-- **Restoration Lab:** unggah gambar terganggu (PNG, JPG, WebP) + referensi bersih opsional, atau muat langsung sampel bawaan `camera_periodic.png` (`512 x 512`). Klik langsung pada spektrum FFT 2D untuk menambah/menghapus pasangan notch, pakai input koordinat manual, atau pilih kandidat semi-otomatis. Tersedia tampilan spektrum sebelum/sesudah filter, pemisah geser (before/after), grid 4 panel, metrik PSNR/SSIM, dan ekspor PNG/CSV.
+- **Restoration Lab:** unggah gambar terganggu (PNG, JPG, WebP, dan Netpbm PGM) + referensi bersih opsional, atau muat langsung sampel bawaan `camera_periodic.png` (`512 x 512`) dan `boy_noisy.pgm` (`512 x 512`). Klik langsung pada spektrum FFT 2D untuk menambah/menghapus pasangan notch, aktifkan deteksi otomatis berbasis jendela Hann + MAD Z-score, pakai input koordinat manual, atau pilih kandidat semi-otomatis. Tersedia tampilan spektrum sebelum/sesudah filter, pemisah geser (before/after), grid 4 panel, metrik PSNR/SSIM, serta ekspor PNG, CSV, dan arsip ZIP.
+- **Kamera:** tangkap foto langsung dari kamera web (atau unggah foto perangkat) dalam dua mode: **Foto asli (deteksi otomatis)** dan **Simulasi gangguan periodik** lengkap dengan perbandingan dan ekspor ZIP.
 - **Eksperimen Sinusoid:** uji terkontrol menggunakan `skimage.data.camera` (`512 x 512`) atau citra bersih pilihan Anda dengan dua komponen sinusoid `(u1, v1)` dan `(u2, v2)`, preset pola frekuensi, perbandingan terhadap Gaussian blur, grafik interaktif sensitivitas `sigma` (`0.5` sampai `4.0`), dan ekspor PNG/CSV.
 - **Petunjuk:** ringkasan alur kerja, konvensi koordinat, rumus notch mask, dan batasan metode.
 - **Tema Gelap dan Terang:** bawaan mode gelap ala instrumen spektral dengan tombol ganti mode terang yang teruji kontras WCAG AA, ramah keyboard, dan responsif dari layar ponsel (`320px`) hingga desktop.
