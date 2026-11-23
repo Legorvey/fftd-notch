@@ -234,6 +234,59 @@ class DspClient {
       sweep: res.sweep,
     };
   }
+
+  async autoDetectLab(
+    width: number,
+    height: number,
+    data: Float64Array,
+    zThresh = 6.0,
+    maxPeaks = 8,
+  ): Promise<PeakCandidate[]> {
+    const id = this.nextId++;
+    const res = await this.dispatchImmediate({
+      id,
+      type: 'autoDetectLab',
+      width,
+      height,
+      data,
+      zThresh,
+      maxPeaks,
+    });
+    if (res.type !== 'autoDetectLabResult') {
+      throw new Error('Respons worker tidak sesuai untuk deteksi otomatis.');
+    }
+    return res.candidates;
+  }
+
+  async processCameraFrame(params: {
+    width: number;
+    height: number;
+    clean: Float64Array;
+    mode: 'real' | 'simulation';
+    notchSigma: number;
+  }) {
+    const id = this.nextId++;
+    const res = await this.dispatchImmediate({
+      id,
+      type: 'processCameraFrame',
+      ...params,
+    });
+    if (res.type !== 'processCameraFrameResult') {
+      throw new Error('Respons worker tidak sesuai untuk pemrosesan kamera.');
+    }
+    return {
+      status: res.status,
+      message: res.message,
+      working: res.working,
+      restored: res.restored,
+      blurred: res.blurred,
+      spectrum: res.spectrum,
+      filteredSpectrum: res.filteredSpectrum,
+      mask: res.mask,
+      centers: res.centers,
+      metrics: res.metrics,
+    };
+  }
 }
 
 export const dspClient = new DspClient();

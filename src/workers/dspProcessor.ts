@@ -1,9 +1,11 @@
 import {
   applyNotchToSpectrum,
+  autoDetectNotchCenters,
   calculateMetrics,
   detectPeakCandidates,
   fftSpectrum,
   gaussianBlur,
+  recommendPeakCandidates,
 } from '../dsp/notch';
 import {
   addPeriodicNoise,
@@ -55,6 +57,24 @@ export type WorkerRequest =
     }
   | {
       id: number;
+      type: 'autoDetectLab';
+      width: number;
+      height: number;
+      data: Float64Array;
+      zThresh: number;
+      maxPeaks: number;
+    }
+  | {
+      id: number;
+      type: 'processCameraFrame';
+      width: number;
+      height: number;
+      clean: Float64Array;
+      mode: 'real' | 'simulation';
+      notchSigma: number;
+    }
+  | {
+      id: number;
       type: 'clearCache';
     };
 
@@ -94,6 +114,29 @@ export type WorkerResponse =
         notchFilter: QualityMetrics;
       };
       sweep: SigmaSweepPoint[];
+    }
+  | {
+      id: number;
+      type: 'autoDetectLabResult';
+      candidates: PeakCandidate[];
+    }
+  | {
+      id: number;
+      type: 'processCameraFrameResult';
+      status: 'simulated' | 'filtered' | 'no_peak';
+      message: string;
+      working: Float64Array;
+      restored: Float64Array;
+      blurred: Float64Array | null;
+      spectrum: Float64Array;
+      filteredSpectrum: Float64Array;
+      mask: Float64Array;
+      centers: Point2D[];
+      metrics: {
+        noCorrection: QualityMetrics;
+        gaussianBlur: QualityMetrics;
+        notchFilter: QualityMetrics;
+      } | null;
     }
   | {
       id: number;
@@ -425,6 +468,111 @@ export function processWorkerRequest(req: WorkerRequest): WorkerResponse {
           notchFilter: exp.lastNotchMetric,
         },
         sweep: exp.sweep.map((s) => ({ ...s })),
+      };
+    }
+
+    if (req.type === 'autoDetectLab') {
+      validateDimensions(req.width, req.height);
+      const candidates = autoDetectNotchCenters(req.data, req.width, req.height, {
+        zThresh: req.zThresh,
+        maxPeaks: Math.min(20, Math.max(1, Math.trunc(req.maxPeaks))),
+      });
+      return { id: reqId, type: 'autoDetectLabResult', candidates };
+    }
+
+    if (req.type === 'processCameraFrame') {
+      validateDimensions(req.width, req.height);
+      if (!Number.isFinite(req.notchSigma) || req.notchSigma <= 0 || req.notchSigma > 50) {
+        throw new Error('Sigma notch harus lebih besar dari 0 dan tidak melebihi 50.');
+      }
+      if (req.mode === 'simulation') {
+        const u = Math.min(24, Math.max(4, Math.floor(req.width / 20)), Math.max(1, Math.floor(req.width / 2) - 1));
+        const v = Math.min(30, Math.max(4, Math.floor(req.height / 17)), Math.max(1, Math.floor(req.height / 2) - 1));
+        const components: SinusoidComponent[] = [
+          { u, v: 0, amplitude: 0.06, phase: 0 },
+          { u: 0, v, amplitude: 0.06, phase: 0 },
+        ];
+        const { noisy } = addPeriodicNoise(req.clean, req.width, req.height, components);
+        const centers = knownNotchCenters(req.width, req.height, components);
+        const { fShiftRe, fShiftIm, spectrum } = fftSpectrum(noisy, req.width, req.height);
+        const { restored, mask, filteredSpectrum } = applyNotchToSpectrum(
+          fShiftRe,
+          fShiftIm,
+          req.width,
+          req.height,
+          centers,
+          req.notchSigma,
+          true,
+        );
+        const blurred = gaussianBlur(noisy, req.width, req.height, 1.2);
+        const metrics = {
+          noCorrection: calculateMetrics(req.clean, noisy, req.width, req.height),
+          gaussianBlur: calculateMetrics(req.clean, blurred, req.width, req.height),
+          notchFilter: calculateMetrics(req.clean, restored, req.width, req.height),
+        };
+        return {
+          id: reqId,
+          type: 'processCameraFrameResult',
+          status: 'simulated',
+          message: 'Dua sinusoid sintetis telah ditambahkan dan ditekan pada frekuensi yang diketahui.',
+          working: noisy,
+          restored,
+          blurred,
+          spectrum,
+          filteredSpectrum,
+          mask,
+          centers,
+          metrics,
+        };
+      }
+
+      const { fShiftRe, fShiftIm, spectrum } = fftSpectrum(req.clean, req.width, req.height);
+      const recommended = recommendPeakCandidates(spectrum, req.width, req.height, 2, 0.9);
+      const centers = recommended.map((c) => ({ y: c.y, x: c.x }));
+      if (centers.length > 0) {
+        const { restored, mask, filteredSpectrum } = applyNotchToSpectrum(
+          fShiftRe,
+          fShiftIm,
+          req.width,
+          req.height,
+          centers,
+          req.notchSigma,
+          true,
+        );
+        const blurred = gaussianBlur(req.clean, req.width, req.height, 1.2);
+        return {
+          id: reqId,
+          type: 'processCameraFrameResult',
+          status: 'filtered',
+          message:
+            'Kandidat puncak dominan ditemukan dan Notch Filter diterapkan. Periksa spektrum untuk memastikan puncak tersebut benar-benar gangguan periodik.',
+          working: new Float64Array(req.clean),
+          restored,
+          blurred,
+          spectrum,
+          filteredSpectrum,
+          mask,
+          centers,
+          metrics: null,
+        };
+      }
+
+      const ones = new Float64Array(req.width * req.height);
+      ones.fill(1.0);
+      return {
+        id: reqId,
+        type: 'processCameraFrameResult',
+        status: 'no_peak',
+        message:
+          'Tidak ditemukan puncak periodik yang cukup menonjol. Foto ditampilkan tanpa filter agar detail asli tidak terhapus secara sembarang.',
+        working: new Float64Array(req.clean),
+        restored: new Float64Array(req.clean),
+        blurred: null,
+        spectrum,
+        filteredSpectrum: new Float64Array(spectrum),
+        mask: ones,
+        centers: [],
+        metrics: null,
       };
     }
 

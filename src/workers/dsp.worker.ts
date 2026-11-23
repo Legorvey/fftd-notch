@@ -29,6 +29,15 @@ if (
         response.filteredSpectrum.buffer,
         response.mask.buffer,
       );
+    } else if (response.type === 'processCameraFrameResult') {
+      transferables.push(
+        response.working.buffer,
+        response.restored.buffer,
+        response.spectrum.buffer,
+        response.filteredSpectrum.buffer,
+        response.mask.buffer,
+      );
+      if (response.blurred) transferables.push(response.blurred.buffer);
     }
     scope.postMessage(response, transferables);
   };
