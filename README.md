@@ -148,16 +148,19 @@ npx vercel --prod
 
 ```text
 .
-├── index.html                  # Dokumen HTML utama dan font IBM Plex
+├── index.html                  # Dokumen HTML utama aplikasi
 ├── vercel.json                 # Konfigurasi build, rewrite, cache, dan header keamanan Vercel
-├── package.json                # Dependensi React 19, Vite 6, TypeScript 5, Vitest
+├── package.json                # Dependensi React 19, Motion, Lenis, Radix Dialog, Vite 6, TypeScript 5, Vitest
+├── docs/                       # Dokumentasi audit UI/UX, design system, motion system, dan verifikasi
 ├── public/
 │   ├── favicon.svg             # Ikon situs SVG
 │   └── samples/
 │       ├── camera.png          # Referensi bersih skimage.data.camera (512x512 lossless)
-│       └── camera_periodic.png # Sampel uji dengan gangguan dua sinusoid periodik
+│       ├── camera_periodic.png # Sampel uji dengan gangguan dua sinusoid periodik
+│       └── boy_noisy.pgm       # Sampel citra PGM dengan gangguan periodik tanpa referensi
 ├── src/
-│   ├── App.tsx                 # Shell aplikasi, tab persisten, dan pengatur tema gelap/terang
+│   ├── App.tsx                 # Shell aplikasi, tab persisten, scoped Lenis, dan pengatur tema gelap/terang
+│   ├── motion/                 # Token animasi, preferensi reduced-motion, dan hook Lenis scoped
 │   ├── dsp/
 │   │   ├── fft.ts              # FFT 1D/2D presisi Float64 (Cooley-Tukey + Bluestein) & fftshift
 │   │   ├── notch.ts            # Notch mask, rekonstruksi IFFT, Gaussian blur, peak detector, PSNR/SSIM
@@ -171,13 +174,13 @@ npx vercel --prod
 │   │   └── dspClient.ts        # Klien Promise dengan coalescing latest-wins & timeout
 │   ├── utils/
 │   │   └── imageLoader.ts      # Validasi magic-byte/dimensi pra-dekode dan konversi grayscale
-│   ├── components/             # Header, SpectrumCanvas, ComparisonViewer, SigmaChart, MetricsTable, tab lab/eksperimen/petunjuk
-│   └── styles/                 # Token warna WCAG AA (gelap & terang) dan tata letak responsif
+│   ├── components/             # Header, Sidebar, LabIntroShowcase, SpectrumCanvas, ComparisonViewer, SigmaChart, MetricsTable, dan tab
+│   └── styles/                 # Token warna WCAG AA (gelap & terang), motion tokens, dan tata letak responsif
 ├── tests/
 │   ├── fixtures/python_golden.json  # Output referensi dari Python untuk uji paritas numerik
 │   ├── dsp.test.ts             # Uji FFT, paritas Python (genap, ganjil, 512x512 camera), batas input
 │   ├── worker.test.ts          # Uji cache worker, eksperimen, dan penanganan galat
-│   └── app.test.tsx            # Uji tab keyboard, tema, form angka negatif, metrik, grafik, ErrorBoundary
+│   └── app.test.tsx            # Uji tab persisten, Radix drawer, tema, form angka negatif, metrik, grafik, CameraTab, ErrorBoundary
 ├── fft2d_notch.py              # Modul referensi Python inti FFT 2D + Notch
 ├── experiments.py              # Modul referensi Python eksperimen sintetis
 ├── run_experiment.py           # CLI eksperimen Python
