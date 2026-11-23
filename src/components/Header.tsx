@@ -5,6 +5,10 @@ interface HeaderProps {
   activeTab: ActiveTab;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  reducedMotion: boolean;
+  systemReduced: boolean;
+  onToggleReducedMotion: () => void;
+  onOpenGuide: () => void;
   mobileOpen: boolean;
   onOpenMobile: () => void;
   mobileTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -21,6 +25,10 @@ export function Header({
   activeTab,
   theme,
   onToggleTheme,
+  reducedMotion,
+  systemReduced,
+  onToggleReducedMotion,
+  onOpenGuide,
   mobileOpen,
   onOpenMobile,
   mobileTriggerRef,
@@ -34,7 +42,7 @@ export function Header({
           className="btn btn-compact mobile-menu-trigger"
           onClick={onOpenMobile}
           aria-expanded={mobileOpen}
-          aria-controls="app-sidebar"
+          aria-controls="mobile-nav-drawer"
         >
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
@@ -43,7 +51,7 @@ export function Header({
         </button>
 
         <div className="breadcrumb" aria-label="Lokasi halaman saat ini">
-          <h1 className="top-bar-title">Mini Image Restoration Lab</h1>
+          <h1 className="top-bar-title">FFTD Notch</h1>
           <span className="breadcrumb-sep" aria-hidden="true">
             /
           </span>
@@ -52,6 +60,33 @@ export function Header({
       </div>
 
       <div className="top-bar-right">
+        {activeTab !== 'guide' ? (
+          <button
+            type="button"
+            className="btn btn-compact header-help-btn"
+            onClick={onOpenGuide}
+            aria-label="Buka Petunjuk dan Teori"
+          >
+            <span>Panduan</span>
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          className="btn btn-compact btn-toggle header-motion-btn"
+          onClick={onToggleReducedMotion}
+          disabled={systemReduced}
+          aria-pressed={reducedMotion}
+          title={
+            systemReduced
+              ? 'Animasi dikurangi mengikuti pengaturan sistem operasi Anda'
+              : 'Kurangi animasi dan efek parallax'
+          }
+          aria-label="Animasi dikurangi"
+        >
+          <span>{reducedMotion ? 'Gerak minimal' : 'Animasi'}</span>
+        </button>
+
         <button
           type="button"
           className="theme-toggle"

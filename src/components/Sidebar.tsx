@@ -1,5 +1,7 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from 'react';
+import * as Dialog from '@radix-ui/react-dialog';
 import { motion } from 'motion/react';
+import { MOTION_SPRING } from '../motion/tokens';
 
 export type ActiveTab = 'lab' | 'camera' | 'experiment' | 'guide';
 export type ThemeMode = 'dark' | 'light';
@@ -13,6 +15,7 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  mobileTriggerRef: RefObject<HTMLButtonElement | null>;
   theme: ThemeMode;
   onToggleTheme: () => void;
 }
@@ -78,41 +81,38 @@ function NavIcon({ id }: { id: ActiveTab }) {
   );
 }
 
-export function Sidebar({
+interface SidebarContentProps {
+  activeTab: ActiveTab;
+  onSelectTab: (tab: ActiveTab) => void;
+  onQuickSample: (sample: QuickSampleKind) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  isDrawer: boolean;
+  onCloseMobile: () => void;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
+  filterText: string;
+  onFilterTextChange: (val: string) => void;
+  searchInputRef?: RefObject<HTMLInputElement | null>;
+}
+
+function SidebarContent({
   activeTab,
   onSelectTab,
   onQuickSample,
   collapsed,
   onToggleCollapse,
-  mobileOpen,
+  isDrawer,
   onCloseMobile,
   theme,
   onToggleTheme,
-}: SidebarProps) {
-  const [filterText, setFilterText] = useState('');
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  filterText,
+  onFilterTextChange,
+  searchInputRef,
+}: SidebarContentProps) {
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const searchId = useId();
-
-  // Keyboard shortcut: press 'f' outside inputs to focus sidebar filter.
-  useEffect(() => {
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        target?.tagName === 'INPUT' ||
-        target?.tagName === 'TEXTAREA' ||
-        target?.isContentEditable;
-      if (isTyping) return;
-      if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        if (!collapsed) {
-          event.preventDefault();
-          searchInputRef.current?.focus();
-        }
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [collapsed]);
+  const isCompact = !isDrawer && collapsed;
 
   const query = filterText.trim().toLowerCase();
   const visibleNavItems = query
@@ -121,6 +121,10 @@ export function Sidebar({
           item.label.toLowerCase().includes(query) || item.keywords.includes(query),
       )
     : NAV_ITEMS;
+
+  // Ensure at least one visible tab remains keyboard-focusable even if the active tab is filtered out.
+  const activeIsVisible = visibleNavItems.some((item) => item.id === activeTab);
+  const focusableTabId = activeIsVisible ? activeTab : visibleNavItems[0]?.id ?? null;
 
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     const count = visibleNavItems.length;
@@ -144,11 +148,7 @@ export function Sidebar({
   };
 
   return (
-    <aside
-      id="app-sidebar"
-      className={`app-sidebar${collapsed ? ' is-collapsed' : ''}${mobileOpen ? ' is-mobile-open' : ''}`}
-      aria-label="Navigasi ruang kerja"
-    >
+    <>
       <div className="sidebar-header">
         <div className="sidebar-brand">
           <div className="brand-mark" aria-hidden="true">
@@ -160,46 +160,47 @@ export function Sidebar({
               <circle cx="14" cy="14" r="1.5" fill="currentColor" />
             </svg>
           </div>
-          {!collapsed ? (
+          {!isCompact ? (
             <div className="sidebar-brand-text">
-              <span className="sidebar-brand-title">Mini Restoration Lab</span>
-              <span className="sidebar-brand-meta">FFT 2D · Notch Filter</span>
+              <span className="sidebar-brand-title">FFTD Notch</span>
+              <span className="sidebar-brand-meta">Image Restoration Lab</span>
             </div>
           ) : null}
         </div>
 
-        <button
-          type="button"
-          className="sidebar-collapse-btn desktop-only-btn"
-          onClick={onToggleCollapse}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? 'Luaskan panel navigasi' : 'Ciutkan panel navigasi'}
-          title={collapsed ? 'Luaskan sidebar' : 'Ciutkan sidebar'}
-        >
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-            {collapsed ? (
-              <path d="M8 5l5 5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-            ) : (
-              <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-            )}
-          </svg>
-        </button>
-
-        {mobileOpen ? (
+        {!isDrawer ? (
           <button
             type="button"
-            className="sidebar-collapse-btn mobile-only-btn"
-            onClick={onCloseMobile}
-            aria-label="Tutup menu navigasi"
+            className="sidebar-collapse-btn desktop-only-btn"
+            onClick={onToggleCollapse}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? 'Luaskan panel navigasi' : 'Ciutkan panel navigasi'}
+            title={collapsed ? 'Luaskan sidebar' : 'Ciutkan sidebar'}
           >
             <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              {collapsed ? (
+                <path d="M8 5l5 5-5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              ) : (
+                <path d="M12 5l-5 5 5 5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+              )}
             </svg>
           </button>
-        ) : null}
+        ) : (
+          <Dialog.Close asChild>
+            <button
+              type="button"
+              className="sidebar-collapse-btn"
+              aria-label="Tutup menu navigasi"
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+              </svg>
+            </button>
+          </Dialog.Close>
+        )}
       </div>
 
-      {!collapsed ? (
+      {!isCompact ? (
         <div className="sidebar-search-wrap">
           <label htmlFor={searchId} className="sr-only">
             Cari menu atau alat
@@ -209,10 +210,10 @@ export function Sidebar({
             id={searchId}
             type="search"
             value={filterText}
-            onChange={(e) => setFilterText(e.target.value)}
+            onChange={(e) => onFilterTextChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') {
-                setFilterText('');
+                onFilterTextChange('');
                 (e.currentTarget as HTMLInputElement).blur();
               }
             }}
@@ -227,48 +228,54 @@ export function Sidebar({
 
       <div className="sidebar-scroll">
         <div className="sidebar-group">
-          {!collapsed ? <div className="sidebar-group-label">Ruang Kerja</div> : null}
-          <nav aria-label="Menu utama laboratorium">
-            <div className="sidebar-nav-list" role="tablist" aria-orientation="vertical" aria-label="Pilihan tampilan lab">
+          {!isCompact ? <div className="sidebar-group-label">Ruang Kerja</div> : null}
+          <nav aria-label={isDrawer ? 'Menu navigasi mobile' : 'Menu utama laboratorium'}>
+            <div
+              className="sidebar-nav-list"
+              role="tablist"
+              aria-orientation="vertical"
+              aria-label="Pilihan tampilan lab"
+            >
               {visibleNavItems.length === 0 ? (
                 <p className="sidebar-empty-hint">Tidak ada menu yang cocok.</p>
               ) : (
                 visibleNavItems.map((item, index) => {
                   const isActive = activeTab === item.id;
+                  const isFocusable = focusableTabId === item.id;
                   return (
                     <motion.button
                       key={item.id}
                       ref={(el) => {
                         tabRefs.current[index] = el;
                       }}
-                      id={`tab-${item.id}`}
+                      id={isDrawer ? `drawer-tab-${item.id}` : `tab-${item.id}`}
                       type="button"
                       role="tab"
                       aria-selected={isActive}
                       aria-controls={`panel-${item.id}`}
-                      tabIndex={isActive ? 0 : -1}
+                      tabIndex={isFocusable ? 0 : -1}
                       aria-label={item.label}
-                      title={collapsed ? item.label : undefined}
+                      title={isCompact ? item.label : undefined}
                       className={`sidebar-nav-item${isActive ? ' is-active' : ''}`}
                       whileTap={{ scale: 0.97 }}
                       onClick={() => {
                         onSelectTab(item.id);
-                        onCloseMobile();
+                        if (isDrawer) onCloseMobile();
                       }}
                       onKeyDown={(e) => handleTabKeyDown(e, index)}
                     >
                       {isActive ? (
                         <motion.span
-                          layoutId="sidebar-active-pill"
+                          layoutId={isDrawer ? 'drawer-active-pill' : 'sidebar-active-pill'}
                           className="sidebar-active-pill"
                           aria-hidden="true"
-                          transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+                          transition={MOTION_SPRING.indicator}
                         />
                       ) : null}
                       <span className="sidebar-nav-icon">
                         <NavIcon id={item.id} />
                       </span>
-                      {!collapsed ? <span className="sidebar-nav-label">{item.label}</span> : null}
+                      {!isCompact ? <span className="sidebar-nav-label">{item.label}</span> : null}
                     </motion.button>
                   );
                 })
@@ -277,7 +284,7 @@ export function Sidebar({
           </nav>
         </div>
 
-        {!collapsed ? (
+        {!isCompact ? (
           <>
             <div className="sidebar-group">
               <div className="sidebar-group-label">Sampel Cepat</div>
@@ -287,7 +294,7 @@ export function Sidebar({
                   className="sidebar-nav-item"
                   onClick={() => {
                     onQuickSample('camera_periodic');
-                    onCloseMobile();
+                    if (isDrawer) onCloseMobile();
                   }}
                 >
                   <span className="sidebar-nav-icon" aria-hidden="true">
@@ -303,7 +310,7 @@ export function Sidebar({
                   className="sidebar-nav-item"
                   onClick={() => {
                     onQuickSample('boy_noisy');
-                    onCloseMobile();
+                    if (isDrawer) onCloseMobile();
                   }}
                 >
                   <span className="sidebar-nav-icon" aria-hidden="true">
@@ -347,7 +354,7 @@ export function Sidebar({
           onClick={onToggleTheme}
           aria-pressed={theme === 'light'}
           aria-label={theme === 'dark' ? 'Aktifkan mode terang' : 'Aktifkan mode gelap'}
-          title={collapsed ? (theme === 'dark' ? 'Mode Terang' : 'Mode Gelap') : undefined}
+          title={isCompact ? (theme === 'dark' ? 'Mode Terang' : 'Mode Gelap') : undefined}
         >
           <span className="sidebar-nav-icon" aria-hidden="true">
             <svg width="17" height="17" viewBox="0 0 20 20" fill="none">
@@ -371,15 +378,115 @@ export function Sidebar({
               )}
             </svg>
           </span>
-          {!collapsed ? (
+          {!isCompact ? (
             <span className="sidebar-nav-label">
               {theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
             </span>
           ) : null}
         </button>
 
-        {!collapsed ? <div className="sidebar-credit">PSD Kelompok H</div> : null}
+        {!isCompact ? <div className="sidebar-credit">PSD Kelompok H · Unpad</div> : null}
       </div>
-    </aside>
+    </>
+  );
+}
+
+export function Sidebar({
+  activeTab,
+  onSelectTab,
+  onQuickSample,
+  collapsed,
+  onToggleCollapse,
+  mobileOpen,
+  onCloseMobile,
+  mobileTriggerRef,
+  theme,
+  onToggleTheme,
+}: SidebarProps) {
+  const [filterText, setFilterText] = useState('');
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Keyboard shortcut: press 'f' outside inputs to focus desktop sidebar filter.
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable;
+      if (isTyping) return;
+      if (event.key.toLowerCase() === 'f' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        if (!collapsed && searchInputRef.current && searchInputRef.current.offsetParent !== null) {
+          event.preventDefault();
+          searchInputRef.current.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [collapsed]);
+
+  return (
+    <>
+      <aside
+        id="app-sidebar"
+        className={`app-sidebar app-sidebar-desktop${collapsed ? ' is-collapsed' : ''}`}
+        aria-label="Navigasi ruang kerja"
+      >
+        <SidebarContent
+          activeTab={activeTab}
+          onSelectTab={onSelectTab}
+          onQuickSample={onQuickSample}
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
+          isDrawer={false}
+          onCloseMobile={onCloseMobile}
+          theme={theme}
+          onToggleTheme={onToggleTheme}
+          filterText={filterText}
+          onFilterTextChange={setFilterText}
+          searchInputRef={searchInputRef}
+        />
+      </aside>
+
+      <Dialog.Root
+        open={mobileOpen}
+        onOpenChange={(open) => {
+          if (!open) onCloseMobile();
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="sidebar-backdrop" />
+          <Dialog.Content
+            id="mobile-nav-drawer"
+            className="app-sidebar app-sidebar-drawer"
+            data-lenis-prevent
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              mobileTriggerRef.current?.focus();
+            }}
+          >
+            <Dialog.Title className="sr-only">Navigasi ruang kerja FFTD Notch</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              Pilih tab laboratorium, sampel cepat, atau ubah tema tampilan.
+            </Dialog.Description>
+            <SidebarContent
+              activeTab={activeTab}
+              onSelectTab={onSelectTab}
+              onQuickSample={onQuickSample}
+              collapsed={false}
+              onToggleCollapse={onToggleCollapse}
+              isDrawer
+              onCloseMobile={onCloseMobile}
+              theme={theme}
+              onToggleTheme={onToggleTheme}
+              filterText={filterText}
+              onFilterTextChange={setFilterText}
+            />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+    </>
   );
 }

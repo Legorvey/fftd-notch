@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent } from 'react';
 import { arrayToPngBytes, csvToBytes, downloadZip, type ZipEntry } from '../dsp/zip';
 import type { Point2D, QualityMetrics } from '../dsp/types';
 import {
@@ -30,24 +30,35 @@ interface CameraResult {
   } | null;
 }
 
-export function CameraTab() {
+type CameraLifecycleState = 'idle' | 'requesting' | 'ready' | 'denied' | 'unavailable';
+
+interface CameraTabProps {
+  isActive?: boolean;
+}
+
+export function CameraTab({ isActive = true }: CameraTabProps) {
   const [mode, setMode] = useState<'real' | 'simulation'>('real');
   const [notchSigma, setNotchSigma] = useState(1.2);
   const [captured, setCaptured] = useState<LoadedImageResult | null>(null);
   const [result, setResult] = useState<CameraResult | null>(null);
 
-  const [streamActive, setStreamActive] = useState(false);
+  const [cameraState, setCameraState] = useState<CameraLifecycleState>('idle');
   const [processing, setProcessing] = useState(false);
   const [zipping, setZipping] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const isActiveRef = useRef(isActive);
+  const permissionSeqRef = useRef(0);
   const seqRef = useRef(0);
   const sigmaId = useId();
   const fallbackUploadId = useId();
 
-  const stopStream = () => {
+  isActiveRef.current = isActive;
+
+  const stopStream = useCallback(() => {
+    permissionSeqRef.current++;
     if (streamRef.current) {
       for (const track of streamRef.current.getTracks()) {
         track.stop();
@@ -57,36 +68,74 @@ export function CameraTab() {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-    setStreamActive(false);
-  };
+    setCameraState((prev) => (prev === 'ready' || prev === 'requesting' ? 'idle' : prev));
+  }, []);
+
+  // Stop media tracks when tab becomes hidden or document visibility changes.
+  // Preserves captured frame and restoration results in session state.
+  useEffect(() => {
+    if (!isActive) {
+      stopStream();
+    }
+  }, [isActive, stopStream]);
 
   useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) stopStream();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
       stopStream();
     };
-  }, []);
+  }, [stopStream]);
 
   const startCamera = async () => {
     setCameraError(null);
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Browser ini tidak mendukung akses kamera web. Gunakan unggah foto di bawah sebagai pengganti.');
+      setCameraState('unavailable');
+      setCameraError(
+        'Browser ini tidak mendukung akses kamera web. Gunakan unggah foto perangkat di sebelah kiri.',
+      );
       return;
     }
+
+    const reqSeq = ++permissionSeqRef.current;
+    setCameraState('requesting');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment', width: { ideal: 1024 }, height: { ideal: 768 } },
         audio: false,
       });
+
+      // Handle late-resolving permission promise after tab switched away or cancelled.
+      if (!isActiveRef.current || reqSeq !== permissionSeqRef.current || document.hidden) {
+        for (const track of stream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
-      setStreamActive(true);
-    } catch {
-      setCameraError(
-        'Izin kamera ditolak atau perangkat kamera tidak ditemukan. Anda tetap dapat mengunggah foto dari perangkat di bawah.',
-      );
+      setCameraState('ready');
+    } catch (err) {
+      if (reqSeq !== permissionSeqRef.current) return;
+      const name = err instanceof Error ? err.name : '';
+      if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setCameraState('unavailable');
+        setCameraError(
+          'Perangkat kamera tidak ditemukan. Anda tetap dapat mengunggah foto dari perangkat di sebelah kiri.',
+        );
+      } else {
+        setCameraState('denied');
+        setCameraError(
+          'Izin kamera ditolak atau sedang digunakan aplikasi lain. Anda tetap dapat mengunggah foto dari perangkat.',
+        );
+      }
     }
   };
 
@@ -208,6 +257,8 @@ export function CameraTab() {
     downloadZip(entries, 'hasil_kamera_fft2d.zip');
   };
 
+  const streamActive = cameraState === 'ready';
+
   return (
     <section
       id="panel-camera"
@@ -219,24 +270,28 @@ export function CameraTab() {
         <div>
           <h2 className="page-heading">Kamera web: deteksi foto asli dan simulasi periodik</h2>
           <p className="page-lead">
-            Ambil foto langsung dari kamera web atau unggah foto perangkat. Mode foto asli mencari puncak periodik dominan secara otomatis; mode simulasi menambahkan dua sinusoid terkontrol untuk menguji PSNR dan SSIM.
+            Foto asli mencari puncak periodik yang memang ada pada tangkapan kamera (tidak selalu ditemukan puncak layak filter). Mode simulasi menambahkan dua sinusoid terkontrol untuk menguji restorasi serta PSNR/SSIM.
           </p>
         </div>
         <div className="telemetry-pill" aria-live="polite">
           {captured
-            ? `${captured.width} x ${captured.height} px · ${mode === 'simulation' ? 'Simulasi' : 'Foto asli'}`
-            : streamActive
-              ? 'Kamera aktif'
-              : 'Kamera siaga'}
+            ? `${captured.width} × ${captured.height} px · ${mode === 'simulation' ? 'Simulasi' : 'Foto asli'}`
+            : cameraState === 'requesting'
+              ? 'Meminta izin kamera...'
+              : streamActive
+                ? 'Kamera aktif'
+                : 'Kamera siaga'}
         </div>
       </div>
 
       <div className="workbench-split">
-        <div className="panel section-stack" style={{ gap: '1rem' }}>
+        <div className="panel section-stack stack-md">
           <div className="panel-header" style={{ marginBottom: 0 }}>
             <div>
               <h3 className="panel-title">Pengaturan kamera</h3>
-              <p className="panel-subtitle">Pilih mode pemrosesan dan lebar notch sebelum atau sesudah mengambil foto.</p>
+              <p className="panel-subtitle">
+                Pilih mode pemrosesan still frame dan lebar notch sebelum atau sesudah mengambil foto.
+              </p>
             </div>
             {processing ? (
               <span className="busy-pill" role="status" aria-live="polite">
@@ -293,23 +348,30 @@ export function CameraTab() {
               onChange={handleFallbackUpload}
             />
             <span className="file-dropzone-hint">
-              {captured ? `Frame aktif: ${captured.name} (${captured.width} x ${captured.height} px)` : 'Belum ada foto ditangkap.'}
+              {captured
+                ? `Frame aktif: ${captured.name} (${captured.width} × ${captured.height} px)`
+                : 'Belum ada foto ditangkap.'}
             </span>
           </div>
         </div>
 
-        <div className="panel section-stack" style={{ gap: '0.85rem' }}>
+        <div className="panel section-stack stack-md">
           <div className="panel-header" style={{ marginBottom: 0 }}>
             <h3 className="panel-title">Pratinjau kamera web</h3>
             <div className="btn-segmented">
               {!streamActive ? (
-                <button type="button" className="btn btn-primary" onClick={startCamera}>
-                  Aktifkan kamera
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={cameraState === 'requesting'}
+                  onClick={startCamera}
+                >
+                  {cameraState === 'requesting' ? 'Meminta izin...' : 'Aktifkan kamera'}
                 </button>
               ) : (
                 <>
                   <button type="button" className="btn btn-primary" onClick={captureFrame}>
-                    Ambil foto
+                    {captured ? 'Ambil ulang' : 'Ambil foto'}
                   </button>
                   <button type="button" className="btn" onClick={stopStream}>
                     Matikan kamera
@@ -330,9 +392,19 @@ export function CameraTab() {
             />
             {!streamActive ? (
               <div className="camera-idle-overlay">
-                <p className="camera-idle-title">Kamera belum diaktifkan</p>
+                <p className="camera-idle-title">
+                  {cameraState === 'requesting'
+                    ? 'Menunggu izin akses kamera...'
+                    : cameraState === 'denied'
+                      ? 'Izin kamera tidak diberikan'
+                      : cameraState === 'unavailable'
+                        ? 'Kamera tidak tersedia'
+                        : 'Kamera belum diaktifkan'}
+                </p>
                 <p className="camera-idle-desc">
-                  Tekan Aktifkan kamera untuk mengambil gambar langsung, atau unggah foto dari perangkat di sebelah kiri.
+                  {cameraState === 'requesting'
+                    ? 'Setujui permintaan izin kamera pada browser Anda.'
+                    : 'Tekan Aktifkan kamera untuk mengambil still frame, atau unggah foto perangkat di sebelah kiri.'}
                 </p>
               </div>
             ) : null}
@@ -392,7 +464,7 @@ export function CameraTab() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={zipping}
+              disabled={zipping || processing}
               onClick={async () => {
                 setZipping(true);
                 try {
