@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Iterable, Sequence
 
 import numpy as np
-from scipy.ndimage import gaussian_filter, maximum_filter
+from scipy.ndimage import gaussian_filter, maximum_filter, median_filter
 from scipy.fft import fft2, fftshift, ifft2, ifftshift
 from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
@@ -183,3 +183,71 @@ def calculate_metrics(reference: Array2D, estimate: Array2D) -> dict[str, float]
     else:
         ssim = float(structural_similarity(ref, est, data_range=1.0, win_size=win_size))
     return {"PSNR_dB": psnr, "SSIM": ssim}
+
+
+def recommend_peak_centers(
+    spectrum: Array2D,
+    max_peaks: int = 4,
+    relative_threshold: float = 0.82,
+) -> list[tuple[int, int, float]]:
+    """Pilih kandidat puncak terkuat dengan ambang relatif terhadap puncak tertinggi."""
+    if not 0.0 < relative_threshold <= 1.0:
+        raise ValueError("relative_threshold harus berada pada rentang (0, 1].")
+    candidates = detect_peak_candidates(
+        spectrum,
+        max_peaks=max(max_peaks * 4, 12),
+        min_distance=6,
+        exclude_radius=10,
+        percentile=99.5,
+    )
+    if not candidates:
+        return []
+    strongest = candidates[0][2]
+    return [item for item in candidates if item[2] >= strongest * relative_threshold][:max_peaks]
+
+
+def auto_detect_notch_centers(
+    image: Array2D,
+    z_thresh: float = 6.0,
+    max_peaks: int = 8,
+    min_radius: int = 6,
+    bg_size: int = 15,
+) -> list[tuple[int, int]]:
+    """Deteksi puncak gangguan periodik menggunakan jendela Hann dan MAD z-score spektral."""
+    arr = np.asarray(image, dtype=np.float64)
+    if arr.ndim != 2:
+        raise ValueError("Citra harus grayscale 2D.")
+    if z_thresh <= 0:
+        raise ValueError("z_thresh harus lebih besar dari 0.")
+    if max_peaks < 1:
+        raise ValueError("max_peaks minimal 1.")
+    if bg_size < 3 or bg_size % 2 == 0:
+        raise ValueError("bg_size harus bilangan ganjil >= 3.")
+
+    h, w = arr.shape
+    if h < 3 or w < 3:
+        return []
+
+    window = np.outer(np.hanning(h), np.hanning(w))
+    windowed = (arr - float(np.mean(arr))) * window
+    spec = np.log1p(np.abs(fftshift(fft2(windowed))))
+
+    resid = spec - median_filter(spec, size=bg_size)
+    med = float(np.median(resid))
+    mad = float(np.median(np.abs(resid - med))) + 1e-12
+    z = (resid - med) / (1.4826 * mad)
+
+    cy, cx = h // 2, w // 2
+    yy, xx = np.ogrid[:h, :w]
+    z[(yy - cy) ** 2 + (xx - cx) ** 2 < min_radius**2] = -np.inf
+
+    is_peak = (z == maximum_filter(z, size=5)) & (z > z_thresh)
+    ys, xs = np.nonzero(is_peak)
+
+    found = [
+        (int(y), int(x), float(z[y, x]))
+        for y, x in zip(ys, xs)
+        if (int(y) - cy) < 0 or ((int(y) - cy) == 0 and int(x) > cx)
+    ]
+    found.sort(key=lambda t: -t[2])
+    return [(y, x) for y, x, _ in found[:max_peaks]]
