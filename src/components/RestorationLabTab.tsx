@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { downloadArrayAsPng, downloadCsv } from '../dsp/colormap';
 import { arrayToPngBytes, csvToBytes, downloadZip, type ZipEntry } from '../dsp/zip';
 import { periodicDistance, symmetricCenter } from '../dsp/notch';
@@ -61,8 +62,11 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
 
   const [analyzing, setAnalyzing] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [zipping, setZipping] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [referenceError, setReferenceError] = useState<string | null>(null);
+  const [manualError, setManualError] = useState<string | null>(null);
+  const [dragTarget, setDragTarget] = useState<'corrupted' | 'reference' | null>(null);
 
   const sourceSeqRef = useRef(0);
   const analyzeSeqRef = useRef(0);
@@ -107,36 +111,11 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
     }
   }, []);
 
-  const handleLoadSample = async () => {
-    const loadSeq = ++sourceSeqRef.current;
-    setErrorMessage(null);
-    setReferenceError(null);
-    setAutoMode(false);
-    setAnalyzing(true);
-    try {
-      const [noisySample, cleanSample] = await Promise.all([
-        loadImageFromUrl('/samples/camera_periodic.png', 'camera_periodic.png', null),
-        loadImageFromUrl('/samples/camera.png', 'camera.png', null),
-      ]);
-      if (loadSeq !== sourceSeqRef.current) return;
-      setCorrupted(noisySample);
-      setReference(cleanSample);
-      if (referenceInputRef.current) referenceInputRef.current.value = '';
-      await analyzeImage(noisySample, [
-        { y: 256, x: 280 },
-        { y: 288, x: 256 },
-      ]);
-    } catch (err) {
-      if (loadSeq !== sourceSeqRef.current) return;
-      setAnalyzing(false);
-      setErrorMessage(err instanceof Error ? err.message : 'Gagal memuat sampel gambar bawaan.');
-    }
-  };
-
   const handleLoadBoyNoisySample = useCallback(async () => {
     const loadSeq = ++sourceSeqRef.current;
     setErrorMessage(null);
     setReferenceError(null);
+    setManualError(null);
     setReference(null);
     if (referenceInputRef.current) referenceInputRef.current.value = '';
     setAutoMode(true);
@@ -153,10 +132,11 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
     }
   }, [analyzeImage]);
 
-  const handleLoadSampleWrapped = useCallback(async () => {
+  const handleLoadSample = useCallback(async () => {
     const loadSeq = ++sourceSeqRef.current;
     setErrorMessage(null);
     setReferenceError(null);
+    setManualError(null);
     setAutoMode(false);
     setAnalyzing(true);
     try {
@@ -182,16 +162,13 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
   useEffect(() => {
     if (!quickSampleRequest) return;
     if (quickSampleRequest.kind === 'camera_periodic') {
-      void handleLoadSampleWrapped();
+      void handleLoadSample();
     } else {
       void handleLoadBoyNoisySample();
     }
-  }, [quickSampleRequest, handleLoadSampleWrapped, handleLoadBoyNoisySample]);
+  }, [quickSampleRequest, handleLoadSample, handleLoadBoyNoisySample]);
 
-  const handleCorruptedUpload = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  const loadCorruptedFile = async (file: File) => {
     const loadSeq = ++sourceSeqRef.current;
     setErrorMessage(null);
     try {
@@ -212,10 +189,14 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
     }
   };
 
-  const handleReferenceUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleCorruptedUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    await loadCorruptedFile(file);
+  };
+
+  const loadReferenceFile = async (file: File) => {
     setReferenceError(null);
     try {
       const maxDim = limitResolution ? DEFAULT_MAX_DIMENSION : null;
@@ -228,6 +209,28 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
       }
     } catch (err) {
       setReferenceError(err instanceof Error ? err.message : 'Gagal membaca gambar referensi.');
+    }
+  };
+
+  const handleReferenceUpload = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    await loadReferenceFile(file);
+  };
+
+  const handleDropFile = async (
+    event: DragEvent<HTMLDivElement>,
+    kind: 'corrupted' | 'reference',
+  ) => {
+    event.preventDefault();
+    setDragTarget(null);
+    const file = event.dataTransfer.files?.[0];
+    if (!file) return;
+    if (kind === 'corrupted') {
+      await loadCorruptedFile(file);
+    } else {
+      await loadReferenceFile(file);
     }
   };
 
@@ -247,11 +250,11 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
         if (cancelled) return;
         setCenters(detected.map((c) => ({ y: c.y, x: c.x })));
       } catch (err) {
-        if (!cancelled) {
+        if (!cancelled && !(err instanceof SupersededRequestError)) {
           setErrorMessage(err instanceof Error ? err.message : 'Gagal menjalankan deteksi otomatis.');
         }
       }
-    }, 40);
+    }, 85);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -299,7 +302,7 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
       } finally {
         if (seq === restoreSeqRef.current) setRestoring(false);
       }
-    }, 30);
+    }, 85);
 
     return () => {
       restoreSeqRef.current++;
@@ -307,19 +310,41 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
     };
   }, [corrupted, reference, spectrum, centers, notchSigma, blurSigma]);
 
-  const togglePointOnSpectrum = (pt: Point2D) => {
-    if (!corrupted) return;
-    const hitTolerance = Math.max(5, Math.round(Math.min(corrupted.width, corrupted.height) * 0.015));
-    setCenters((prev) => {
-      const idx = prev.findIndex((existing) =>
-        sameOrSymmetric(existing, pt, corrupted.width, corrupted.height, hitTolerance),
-      );
-      if (idx >= 0) {
-        return prev.filter((_, i) => i !== idx);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.isContentEditable;
+      if (isTyping) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        if (centers.length > 0) {
+          event.preventDefault();
+          setCenters((prev) => prev.slice(0, -1));
+        }
       }
-      return [...prev, pt];
-    });
-  };
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [centers.length]);
+
+  const togglePointOnSpectrum = useCallback(
+    (pt: Point2D) => {
+      if (!corrupted) return;
+      const hitTolerance = Math.max(5, Math.round(Math.min(corrupted.width, corrupted.height) * 0.015));
+      setCenters((prev) => {
+        const idx = prev.findIndex((existing) =>
+          sameOrSymmetric(existing, pt, corrupted.width, corrupted.height, hitTolerance),
+        );
+        if (idx >= 0) {
+          return prev.filter((_, i) => i !== idx);
+        }
+        return [...prev, pt];
+      });
+    },
+    [corrupted],
+  );
 
   const toggleCandidatePoint = (cand: PeakCandidate) => {
     if (!corrupted) return;
@@ -340,10 +365,10 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
     const parsedY = Number.parseInt(manualYText, 10);
     const parsedX = Number.parseInt(manualXText, 10);
     if (!Number.isFinite(parsedY) || !Number.isFinite(parsedX)) {
-      setErrorMessage('Koordinat baris (y) dan kolom (x) harus berupa angka bulat yang valid.');
+      setManualError('Koordinat baris (y) dan kolom (x) harus berupa angka bulat yang valid.');
       return;
     }
-    setErrorMessage(null);
+    setManualError(null);
     const clampedY = Math.min(corrupted.height - 1, Math.max(0, parsedY));
     const clampedX = Math.min(corrupted.width - 1, Math.max(0, parsedX));
     setManualYText(String(clampedY));
@@ -449,17 +474,35 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                 Menghitung FFT 2D...
               </span>
             ) : null}
-            <button type="button" className="btn btn-primary" onClick={handleLoadSample}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={analyzing}
+              onClick={handleLoadSample}
+            >
               Muat sampel Camera + gangguan
             </button>
-            <button type="button" className="btn" onClick={handleLoadBoyNoisySample}>
+            <button
+              type="button"
+              className="btn"
+              disabled={analyzing}
+              onClick={handleLoadBoyNoisySample}
+            >
               Muat sampel Boy Noisy (PGM)
             </button>
           </div>
         </div>
 
         <div className="upload-grid">
-          <div className="file-dropzone">
+          <div
+            className={`file-dropzone${dragTarget === 'corrupted' ? ' is-drag-over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragTarget('corrupted');
+            }}
+            onDragLeave={() => setDragTarget((prev) => (prev === 'corrupted' ? null : prev))}
+            onDrop={(e) => void handleDropFile(e, 'corrupted')}
+          >
             <label htmlFor={corruptedInputId} className="file-dropzone-label">
               Gambar terganggu (PNG, JPG, WebP, PGM)
             </label>
@@ -473,11 +516,19 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
             <span className="file-dropzone-hint">
               {corrupted
                 ? `Aktif: ${corrupted.name} (${corrupted.width} x ${corrupted.height} px${corrupted.wasResized ? `, diubah dari ${corrupted.originalWidth} x ${corrupted.originalHeight}` : ''})`
-                : 'Belum ada berkas dipilih.'}
+                : 'Seret gambar ke sini atau pilih berkas.'}
             </span>
           </div>
 
-          <div className="file-dropzone">
+          <div
+            className={`file-dropzone${dragTarget === 'reference' ? ' is-drag-over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragTarget('reference');
+            }}
+            onDragLeave={() => setDragTarget((prev) => (prev === 'reference' ? null : prev))}
+            onDrop={(e) => void handleDropFile(e, 'reference')}
+          >
             <label htmlFor={referenceInputId} className="file-dropzone-label">
               Referensi bersih (opsional, untuk PSNR dan SSIM)
             </label>
@@ -544,9 +595,15 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
           <p>
             Pilih gambar dengan gangguan garis periodik dari perangkat Anda, atau klik tombol di bawah untuk langsung menguji sampel citra Camera 512 x 512 beserta referensi bersihnya.
           </p>
-          <button type="button" className="btn btn-primary" onClick={handleLoadSample}>
+          <button type="button" className="btn btn-primary" disabled={analyzing} onClick={handleLoadSample}>
             Muat sampel Camera + gangguan
           </button>
+        </div>
+      ) : null}
+
+      {analyzing && !spectrum ? (
+        <div className="panel loading-panel" role="status" aria-live="polite">
+          <span className="busy-pill">Menghitung spektrum FFT 2D dan kandidat puncak...</span>
         </div>
       ) : null}
 
@@ -636,7 +693,11 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={manualYText}
-                    onChange={(e) => setManualYText(e.target.value)}
+                    aria-invalid={manualError ? 'true' : undefined}
+                    onChange={(e) => {
+                      setManualYText(e.target.value);
+                      if (manualError) setManualError(null);
+                    }}
                     className="number-input"
                   />
                 </div>
@@ -651,7 +712,11 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                     inputMode="numeric"
                     pattern="[0-9]*"
                     value={manualXText}
-                    onChange={(e) => setManualXText(e.target.value)}
+                    aria-invalid={manualError ? 'true' : undefined}
+                    onChange={(e) => {
+                      setManualXText(e.target.value);
+                      if (manualError) setManualError(null);
+                    }}
                     className="number-input"
                   />
                 </div>
@@ -662,11 +727,25 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                   type="button"
                   className="btn"
                   disabled={centers.length === 0}
+                  onClick={() => setCenters((prev) => prev.slice(0, -1))}
+                  title="Hapus titik terakhir yang ditambahkan (Ctrl+Z)"
+                >
+                  Urungkan terakhir
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={centers.length === 0}
                   onClick={() => setCenters([])}
                 >
-                  Hapus semua titik ({centers.length})
+                  Hapus semua ({centers.length})
                 </button>
               </form>
+              {manualError ? (
+                <p className="field-error" role="alert">
+                  {manualError}
+                </p>
+              ) : null}
 
               {hasNearDcCenter ? (
                 <div className="status-banner status-banner-warning" role="status">
@@ -688,24 +767,32 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                   </p>
                 ) : (
                   <div className="chip-list">
-                    {centers.map((pt) => (
-                      <button
-                        key={`${pt.y}-${pt.x}`}
-                        type="button"
-                        className="notch-chip notch-chip-active"
-                        aria-label={`Hapus titik notch y=${pt.y}, x=${pt.x}`}
-                        onClick={() =>
-                          setCenters((prev) =>
-                            prev.filter((item) => item.y !== pt.y || item.x !== pt.x),
-                          )
-                        }
-                      >
-                        <span>
-                          (y={pt.y}, x={pt.x})
-                        </span>
-                        <span aria-hidden="true">x</span>
-                      </button>
-                    ))}
+                    <AnimatePresence mode="popLayout" initial={false}>
+                      {centers.map((pt) => (
+                        <motion.button
+                          key={`${pt.y}-${pt.x}`}
+                          layout
+                          initial={{ opacity: 0, scale: 0.84 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          whileTap={{ scale: 0.94 }}
+                          transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                          type="button"
+                          className="notch-chip notch-chip-active"
+                          aria-label={`Hapus titik notch y=${pt.y}, x=${pt.x}`}
+                          onClick={() =>
+                            setCenters((prev) =>
+                              prev.filter((item) => item.y !== pt.y || item.x !== pt.x),
+                            )
+                          }
+                        >
+                          <span>
+                            (y={pt.y}, x={pt.x})
+                          </span>
+                          <span aria-hidden="true">×</span>
+                        </motion.button>
+                      ))}
+                    </AnimatePresence>
                   </div>
                 )}
               </div>
@@ -982,9 +1069,17 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={handleDownloadAllZip}
+                  disabled={zipping}
+                  onClick={async () => {
+                    setZipping(true);
+                    try {
+                      await handleDownloadAllZip();
+                    } finally {
+                      setZipping(false);
+                    }
+                  }}
                 >
-                  Unduh semua (ZIP)
+                  {zipping ? 'Membuat ZIP...' : 'Unduh semua (ZIP)'}
                 </button>
               </div>
             </div>

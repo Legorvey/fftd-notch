@@ -45,8 +45,8 @@ export class ErrorBoundary extends Component<Props, State> {
       );
       if (this.props.inline) return content;
       return (
-        <main id="main-content" className="main-container">
-          {content}
+        <main id="main-content" className="main-workspace">
+          <div className="workspace-inner">{content}</div>
         </main>
       );
     }

@@ -21,7 +21,7 @@ export function GuideTab() {
           <h3 className="panel-title">1. Alur kerja Restoration Lab</h3>
           <ol className="guide-list">
             <li>
-              <strong>Unggah gambar terganggu</strong> (PNG, JPG, atau WebP) yang memiliki garis atau pola berulang, atau klik <strong>Muat sampel Camera + gangguan</strong> untuk langsung menguji data contoh.
+              <strong>Unggah gambar terganggu</strong> (PNG, JPG, WebP, atau PGM) yang memiliki garis atau pola berulang, atau klik <strong>Muat sampel Camera + gangguan</strong> untuk langsung menguji data contoh.
             </li>
             <li>
               <strong>Amati spektrum FFT 2D</strong> dalam skala logaritmik <code>log(1 + |F|)</code>. Gangguan periodik tampak sebagai sepasang titik terang yang simetris terhadap pusat DC.

@@ -7,7 +7,7 @@ import {
   rasterizeCanvasSource,
   type LoadedImageResult,
 } from '../utils/imageLoader';
-import { dspClient } from '../workers/dspClient';
+import { dspClient, SupersededRequestError } from '../workers/dspClient';
 import { CanvasFigure } from './CanvasFigure';
 import { ComparisonViewer } from './ComparisonViewer';
 import { MetricsTable } from './MetricsTable';
@@ -38,6 +38,7 @@ export function CameraTab() {
 
   const [streamActive, setStreamActive] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [zipping, setZipping] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -148,12 +149,12 @@ export function CameraTab() {
         if (seq !== seqRef.current) return;
         setResult(res);
       } catch (err) {
-        if (seq !== seqRef.current) return;
+        if (seq !== seqRef.current || err instanceof SupersededRequestError) return;
         setCameraError(err instanceof Error ? err.message : 'Gagal memproses foto kamera.');
       } finally {
         if (seq === seqRef.current) setProcessing(false);
       }
-    }, 30);
+    }, 90);
 
     return () => {
       seqRef.current++;
@@ -327,19 +328,33 @@ export function CameraTab() {
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               aria-label="Pratinjau kamera web"
             />
+            {!streamActive ? (
+              <div className="camera-idle-overlay">
+                <p className="camera-idle-title">Kamera belum diaktifkan</p>
+                <p className="camera-idle-desc">
+                  Tekan Aktifkan kamera untuk mengambil gambar langsung, atau unggah foto dari perangkat di sebelah kiri.
+                </p>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
 
       {cameraError ? (
-        <div className="status-banner status-banner-warning" role="alert">
-          <span className="status-prefix">PERINGATAN</span>
+        <div className="status-banner status-banner-error" role="alert">
+          <span className="status-prefix">GALAT</span>
           <span>{cameraError}</span>
         </div>
       ) : null}
 
+      {processing && !result ? (
+        <div className="panel loading-panel" role="status" aria-live="polite">
+          <span className="busy-pill">Menghitung spektrum FFT 2D dan notch filter pada frame...</span>
+        </div>
+      ) : null}
+
       {captured && result ? (
-        <div className="panel section-stack" style={{ gap: '1.25rem' }}>
+        <div className="panel section-stack stack-lg">
           <div className="status-banner status-banner-info" role="status">
             <span className="status-prefix">{result.status === 'no_peak' ? 'INFO' : 'OK'}</span>
             <span>{result.message}</span>
@@ -374,8 +389,20 @@ export function CameraTab() {
           {result.metrics ? <MetricsTable metrics={result.metrics} /> : null}
 
           <div className="export-bar">
-            <button type="button" className="btn btn-primary" onClick={handleDownloadCameraZip}>
-              Unduh semua hasil kamera (ZIP)
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={zipping}
+              onClick={async () => {
+                setZipping(true);
+                try {
+                  await handleDownloadCameraZip();
+                } finally {
+                  setZipping(false);
+                }
+              }}
+            >
+              {zipping ? 'Membuat ZIP...' : 'Unduh semua hasil kamera (ZIP)'}
             </button>
           </div>
         </div>

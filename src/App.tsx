@@ -1,11 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { CameraTab } from './components/CameraTab';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { MotionConfig, motion } from 'motion/react';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { GuideTab } from './components/GuideTab';
 import { Header } from './components/Header';
 import { RestorationLabTab } from './components/RestorationLabTab';
 import { Sidebar, type ActiveTab, type QuickSampleKind, type ThemeMode } from './components/Sidebar';
-import { SyntheticExperimentTab } from './components/SyntheticExperimentTab';
+
+const CameraTab = lazy(() =>
+  import('./components/CameraTab').then((m) => ({ default: m.CameraTab })),
+);
+const SyntheticExperimentTab = lazy(() =>
+  import('./components/SyntheticExperimentTab').then((m) => ({
+    default: m.SyntheticExperimentTab,
+  })),
+);
+const GuideTab = lazy(() =>
+  import('./components/GuideTab').then((m) => ({ default: m.GuideTab })),
+);
 
 const THEME_STORAGE_KEY = 'mini-restoration-lab-theme';
 
@@ -78,7 +88,8 @@ export function App() {
   };
 
   return (
-    <div className="app-shell">
+    <MotionConfig reducedMotion="user">
+      <div className="app-shell">
       <a href="#main-content" className="skip-link">
         Langsung ke konten utama
       </a>
@@ -115,34 +126,82 @@ export function App() {
 
         <main id="main-content" className="main-workspace">
           <div className="workspace-inner">
-            <div hidden={activeTab !== 'lab'}>
+            <motion.div
+              key={activeTab === 'lab' ? 'lab-active' : 'lab-hidden'}
+              hidden={activeTab !== 'lab'}
+              initial={activeTab === 'lab' ? { opacity: 0, y: 10 } : false}
+              animate={activeTab === 'lab' ? { opacity: 1, y: 0 } : undefined}
+              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+            >
               <ErrorBoundary inline>
                 <RestorationLabTab quickSampleRequest={quickSampleRequest} />
               </ErrorBoundary>
-            </div>
+            </motion.div>
 
             {visitedTabs.camera ? (
-              <div hidden={activeTab !== 'camera'}>
+              <motion.div
+                key={activeTab === 'camera' ? 'camera-active' : 'camera-hidden'}
+                hidden={activeTab !== 'camera'}
+                initial={activeTab === 'camera' ? { opacity: 0, y: 10 } : false}
+                animate={activeTab === 'camera' ? { opacity: 1, y: 0 } : undefined}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
                 <ErrorBoundary inline>
-                  <CameraTab />
+                  <Suspense
+                    fallback={
+                      <div className="panel loading-panel" role="status" aria-live="polite">
+                        <span className="busy-pill">Memuat modul Kamera Web...</span>
+                      </div>
+                    }
+                  >
+                    <CameraTab />
+                  </Suspense>
                 </ErrorBoundary>
-              </div>
+              </motion.div>
             ) : null}
 
             {visitedTabs.experiment ? (
-              <div hidden={activeTab !== 'experiment'}>
+              <motion.div
+                key={activeTab === 'experiment' ? 'experiment-active' : 'experiment-hidden'}
+                hidden={activeTab !== 'experiment'}
+                initial={activeTab === 'experiment' ? { opacity: 0, y: 10 } : false}
+                animate={activeTab === 'experiment' ? { opacity: 1, y: 0 } : undefined}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
                 <ErrorBoundary inline>
-                  <SyntheticExperimentTab />
+                  <Suspense
+                    fallback={
+                      <div className="panel loading-panel" role="status" aria-live="polite">
+                        <span className="busy-pill">Memuat modul Eksperimen Sinusoid...</span>
+                      </div>
+                    }
+                  >
+                    <SyntheticExperimentTab />
+                  </Suspense>
                 </ErrorBoundary>
-              </div>
+              </motion.div>
             ) : null}
 
             {visitedTabs.guide ? (
-              <div hidden={activeTab !== 'guide'}>
+              <motion.div
+                key={activeTab === 'guide' ? 'guide-active' : 'guide-hidden'}
+                hidden={activeTab !== 'guide'}
+                initial={activeTab === 'guide' ? { opacity: 0, y: 10 } : false}
+                animate={activeTab === 'guide' ? { opacity: 1, y: 0 } : undefined}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
                 <ErrorBoundary inline>
-                  <GuideTab />
+                  <Suspense
+                    fallback={
+                      <div className="panel loading-panel" role="status" aria-live="polite">
+                        <span className="busy-pill">Memuat Petunjuk & Teori...</span>
+                      </div>
+                    }
+                  >
+                    <GuideTab />
+                  </Suspense>
                 </ErrorBoundary>
-              </div>
+              </motion.div>
             ) : null}
 
             <footer className="site-footer">
@@ -155,6 +214,7 @@ export function App() {
         </main>
       </div>
     </div>
+    </MotionConfig>
   );
 }
 

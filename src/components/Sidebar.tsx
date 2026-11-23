@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { motion } from 'motion/react';
 
 export type ActiveTab = 'lab' | 'camera' | 'experiment' | 'guide';
 export type ThemeMode = 'dark' | 'light';
@@ -235,7 +236,7 @@ export function Sidebar({
                 visibleNavItems.map((item, index) => {
                   const isActive = activeTab === item.id;
                   return (
-                    <button
+                    <motion.button
                       key={item.id}
                       ref={(el) => {
                         tabRefs.current[index] = el;
@@ -249,17 +250,26 @@ export function Sidebar({
                       aria-label={item.label}
                       title={collapsed ? item.label : undefined}
                       className={`sidebar-nav-item${isActive ? ' is-active' : ''}`}
+                      whileTap={{ scale: 0.97 }}
                       onClick={() => {
                         onSelectTab(item.id);
                         onCloseMobile();
                       }}
                       onKeyDown={(e) => handleTabKeyDown(e, index)}
                     >
+                      {isActive ? (
+                        <motion.span
+                          layoutId="sidebar-active-pill"
+                          className="sidebar-active-pill"
+                          aria-hidden="true"
+                          transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+                        />
+                      ) : null}
                       <span className="sidebar-nav-icon">
                         <NavIcon id={item.id} />
                       </span>
                       {!collapsed ? <span className="sidebar-nav-label">{item.label}</span> : null}
-                    </button>
+                    </motion.button>
                   );
                 })
               )}

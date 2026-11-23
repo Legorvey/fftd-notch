@@ -170,7 +170,7 @@ export function SyntheticExperimentTab() {
       } finally {
         if (seq === runSeqRef.current) setRunning(false);
       }
-    }, 35);
+    }, 90);
 
     return () => {
       runSeqRef.current++;
@@ -239,7 +239,7 @@ export function SyntheticExperimentTab() {
     downloadCsv(
       ['Metode', 'PSNR_dB', 'SSIM'],
       [
-        ['No correction', result.metrics.noCorrection.psnrDb, result.metrics.noCorrection.ssim],
+        ['Tanpa perbaikan', result.metrics.noCorrection.psnrDb, result.metrics.noCorrection.ssim],
         ['Gaussian blur', result.metrics.gaussianBlur.psnrDb, result.metrics.gaussianBlur.ssim],
         ['Notch filter', result.metrics.notchFilter.psnrDb, result.metrics.notchFilter.ssim],
       ],
@@ -534,9 +534,17 @@ export function SyntheticExperimentTab() {
         </div>
       ) : null}
 
+      {(loadingSource || running) && (!clean || !result) ? (
+        <div className="panel loading-panel" role="status" aria-live="polite">
+          <span className="busy-pill">
+            {loadingSource ? 'Memuat citra referensi...' : 'Menjalankan eksperimen FFT 2D dan kurva sigma...'}
+          </span>
+        </div>
+      ) : null}
+
       {clean && result ? (
         <>
-          <div className="panel section-stack" style={{ gap: '1.25rem' }}>
+          <div className="panel section-stack stack-lg">
             <div className="panel-header" style={{ marginBottom: 0 }}>
               <div>
                 <h3 className="panel-title">Visualisasi hasil eksperimen ({clean.width} x {clean.height} px)</h3>
