@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
+import { motion } from 'motion/react';
 import { formatPsnr, formatSsim } from '../dsp/format';
 import type { SigmaSweepPoint } from '../dsp/types';
+import { MOTION_DURATION, MOTION_EASE } from '../motion/tokens';
 
 interface SigmaChartProps {
   sweep: readonly SigmaSweepPoint[];
@@ -185,13 +187,24 @@ export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProp
             />
           ) : null}
 
-          <path d={psnrPath} fill="none" stroke="var(--accent-text)" strokeWidth="2.4" />
-          <path
+          <motion.path
+            d={psnrPath}
+            fill="none"
+            stroke="var(--accent-text)"
+            strokeWidth="2.4"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: MOTION_DURATION.chart, ease: MOTION_EASE.reveal }}
+          />
+          <motion.path
             d={ssimPath}
             fill="none"
             stroke="var(--status-success)"
             strokeWidth="2.2"
             strokeDasharray="6 3"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: MOTION_DURATION.chart, delay: 0.06, ease: MOTION_EASE.reveal }}
           />
 
           {sweep.map((pt, idx) => {

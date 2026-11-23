@@ -19,6 +19,40 @@ export const MetricsTable = memo(function MetricsTable({ metrics }: MetricsTable
   const ssimVsBase = formatDelta(notch.ssim, base.ssim, '', 4);
   const psnrVsBlur = formatDelta(notch.psnrDb, blur.psnrDb, ' dB', 2);
 
+  const describeComparison = (
+    target: number,
+    baseline: number,
+    unit: string,
+    decimals: number,
+    baselineLabel: string,
+  ): string => {
+    if (Number.isNaN(target) || Number.isNaN(baseline)) {
+      return `Perbandingan terhadap ${baselineLabel} tidak tersedia`;
+    }
+    if (!Number.isFinite(target) && Number.isFinite(baseline)) {
+      return `Lebih tinggi (tak hingga) dari ${baselineLabel}`;
+    }
+    if (Number.isFinite(target) && !Number.isFinite(baseline)) {
+      return `Lebih rendah dari ${baselineLabel}`;
+    }
+    if (!Number.isFinite(target) && !Number.isFinite(baseline)) {
+      return `Setara dengan ${baselineLabel}`;
+    }
+    const diff = target - baseline;
+    const threshold = Math.pow(10, -decimals) / 2;
+    if (Math.abs(diff) < threshold) {
+      return `Setara dengan ${baselineLabel}`;
+    }
+    const formatted = Math.abs(diff).toFixed(decimals);
+    return diff > 0
+      ? `Lebih tinggi ${formatted}${unit} dari ${baselineLabel}`
+      : `Lebih rendah ${formatted}${unit} dari ${baselineLabel}`;
+  };
+
+  const psnrBaseNote = describeComparison(notch.psnrDb, base.psnrDb, ' dB', 2, 'tanpa perbaikan');
+  const ssimBaseNote = describeComparison(notch.ssim, base.ssim, '', 4, 'tanpa perbaikan');
+  const psnrBlurNote = describeComparison(notch.psnrDb, blur.psnrDb, ' dB', 2, 'Gaussian blur');
+
   const rows: ReadonlyArray<{
     label: string;
     data: QualityMetrics;
@@ -36,24 +70,20 @@ export const MetricsTable = memo(function MetricsTable({ metrics }: MetricsTable
         <div className="kpi-card kpi-card-primary">
           <span className="kpi-label">PSNR Notch Filter</span>
           <span className="kpi-value">{formatPsnr(notch.psnrDb)}</span>
-          <span className={`kpi-delta ${psnrVsBase.className}`}>
-            {psnrVsBase.text} dibanding tanpa perbaikan
-          </span>
+          <span className={`kpi-delta ${psnrVsBase.className}`}>{psnrBaseNote}</span>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">SSIM Struktural</span>
           <span className="kpi-value">{formatSsim(notch.ssim)}</span>
-          <span className={`kpi-delta ${ssimVsBase.className}`}>
-            {ssimVsBase.text} dibanding tanpa perbaikan
-          </span>
+          <span className={`kpi-delta ${ssimVsBase.className}`}>{ssimBaseNote}</span>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Keunggulan atas Gaussian Blur</span>
-          <span className="kpi-value">{psnrVsBlur.text}</span>
+          <span className="kpi-label">Selisih terhadap Gaussian blur</span>
+          <span className={`kpi-value ${psnrVsBlur.className}`}>{psnrVsBlur.text}</span>
           <span className="kpi-delta">
-            Blur hanya mencapai {formatPsnr(blur.psnrDb)}
+            {psnrBlurNote} (Gaussian blur: {formatPsnr(blur.psnrDb)})
           </span>
         </div>
       </div>

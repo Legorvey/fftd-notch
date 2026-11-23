@@ -52,7 +52,11 @@ function clampInt(val: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.trunc(val)));
 }
 
-export function SyntheticExperimentTab() {
+interface SyntheticExperimentTabProps {
+  isActive?: boolean;
+}
+
+export function SyntheticExperimentTab({ isActive: _isActive = true }: SyntheticExperimentTabProps) {
   const [sourceMode, setSourceMode] = useState<'camera' | 'upload'>('camera');
   const [clean, setClean] = useState<LoadedImageResult | null>(null);
   const [loadingSource, setLoadingSource] = useState(false);
@@ -265,9 +269,9 @@ export function SyntheticExperimentTab() {
     >
       <div className="workspace-hero">
         <div>
-          <h2 className="page-heading">Eksperimen dua sinusoid spasial terkontrol</h2>
+          <h2 className="page-heading">Lihat bagaimana frekuensi membentuk gangguan.</h2>
           <p className="page-lead">
-            Tambahkan dua gangguan sinusoid pada bin frekuensi yang diketahui, lalu ukur secara kuantitatif performa Gaussian notch filter dibandingkan Gaussian blur serta sensitivitas terhadap lebar sigma.
+            Tambahkan dua komponen sinusoid terkontrol (u, v), lalu ukur secara kuantitatif performa Gaussian notch filter dibanding Gaussian blur serta kurva sensitivitas sigma.
           </p>
         </div>
         <div className="telemetry-pill" aria-live="polite">

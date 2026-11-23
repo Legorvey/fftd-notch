@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type RefObject } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { downloadArrayAsPng, downloadCsv } from '../dsp/colormap';
 import { arrayToPngBytes, csvToBytes, downloadZip, type ZipEntry } from '../dsp/zip';
 import { periodicDistance, symmetricCenter } from '../dsp/notch';
 import type { PeakCandidate, Point2D, RestorationOutput } from '../dsp/types';
+import { MOTION_SPRING } from '../motion/tokens';
 import {
   DEFAULT_MAX_DIMENSION,
   loadImageFromFile,
@@ -13,6 +14,7 @@ import {
 import { dspClient, SupersededRequestError } from '../workers/dspClient';
 import { CanvasFigure } from './CanvasFigure';
 import { ComparisonViewer } from './ComparisonViewer';
+import { LabIntroShowcase } from './LabIntroShowcase';
 import { MetricsTable } from './MetricsTable';
 import { SpectrumCanvas } from './SpectrumCanvas';
 
@@ -36,10 +38,22 @@ function sameOrSymmetric(
 }
 
 interface RestorationLabTabProps {
+  isActive?: boolean;
   quickSampleRequest?: { id: number; kind: 'camera_periodic' | 'boy_noisy' } | null;
+  onOpenGuide?: () => void;
+  onHasImageChange?: (hasImage: boolean) => void;
+  scrollContainerRef?: RefObject<HTMLElement | null>;
+  reducedMotion?: boolean;
 }
 
-export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabTabProps) {
+export function RestorationLabTab({
+  isActive = true,
+  quickSampleRequest = null,
+  onOpenGuide,
+  onHasImageChange,
+  scrollContainerRef,
+  reducedMotion = false,
+}: RestorationLabTabProps) {
   const [corrupted, setCorrupted] = useState<LoadedImageResult | null>(null);
   const [reference, setReference] = useState<LoadedImageResult | null>(null);
   const [limitResolution, setLimitResolution] = useState(true);
@@ -71,7 +85,13 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
   const sourceSeqRef = useRef(0);
   const analyzeSeqRef = useRef(0);
   const restoreSeqRef = useRef(0);
+  const lastConsumedRequestIdRef = useRef<number | null>(null);
+  const corruptedInputRef = useRef<HTMLInputElement | null>(null);
   const referenceInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    onHasImageChange?.(Boolean(corrupted));
+  }, [corrupted, onHasImageChange]);
 
   const corruptedInputId = useId();
   const referenceInputId = useId();
@@ -161,6 +181,8 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
 
   useEffect(() => {
     if (!quickSampleRequest) return;
+    if (lastConsumedRequestIdRef.current === quickSampleRequest.id) return;
+    lastConsumedRequestIdRef.current = quickSampleRequest.id;
     if (quickSampleRequest.kind === 'camera_periodic') {
       void handleLoadSample();
     } else {
@@ -311,11 +333,13 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
   }, [corrupted, reference, spectrum, centers, notchSigma, blurSigma]);
 
   useEffect(() => {
+    if (!isActive) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const isTyping =
         target?.tagName === 'INPUT' ||
         target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
         target?.isContentEditable;
       if (isTyping) return;
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
@@ -327,7 +351,7 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [centers.length]);
+  }, [isActive, centers.length]);
 
   const togglePointOnSpectrum = useCallback(
     (pt: Point2D) => {
@@ -446,29 +470,76 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
       aria-labelledby="tab-lab"
       className="section-stack"
     >
-      <div className="workspace-hero">
-        <div>
-          <h2 className="page-heading">Pemulihan citra dengan pola gangguan periodik</h2>
-          <p className="page-lead">
-            Unggah gambar yang memiliki garis atau pola berulang, lalu klik puncak terang pada spektrum FFT 2D atau aktifkan deteksi otomatis untuk menerapkan Gaussian notch filter.
-          </p>
-        </div>
-        <div className="telemetry-pill" aria-live="polite">
-          {corrupted
-            ? `${corrupted.width} x ${corrupted.height} px · ${centers.length} pasang notch · sigma ${notchSigma.toFixed(1)}`
-            : 'Siap menerima citra'}
-        </div>
-      </div>
+      {/* Hidden native file inputs triggered by CTA buttons or compact source summary bar */}
+      <input
+        ref={corruptedInputRef}
+        id={corruptedInputId}
+        type="file"
+        accept=".png,.jpg,.jpeg,.webp,.pgm,image/png,image/jpeg,image/webp"
+        className="sr-only"
+        aria-label="Pilih gambar terganggu (PNG, JPG, WebP, PGM)"
+        onChange={handleCorruptedUpload}
+      />
+      <input
+        ref={referenceInputRef}
+        id={referenceInputId}
+        type="file"
+        accept=".png,.jpg,.jpeg,.webp,.pgm,image/png,image/jpeg,image/webp"
+        className="sr-only"
+        aria-label="Pilih referensi bersih opsional (PNG, JPG, WebP, PGM)"
+        onChange={handleReferenceUpload}
+      />
 
-      <div className="panel">
-        <div className="panel-header">
-          <div>
-            <h3 className="panel-title">Sumber citra</h3>
-            <p className="panel-subtitle">
-              Seluruh pemrosesan FFT 2D berjalan lokal di browser Anda tanpa mengirim gambar ke server.
-            </p>
+      {!corrupted ? (
+        <LabIntroShowcase
+          analyzing={analyzing}
+          onLoadCameraSample={handleLoadSample}
+          onLoadBoySample={handleLoadBoyNoisySample}
+          onTriggerUpload={() => corruptedInputRef.current?.click()}
+          onOpenGuide={() => onOpenGuide?.()}
+          onDropCorrupted={(e) => void handleDropFile(e, 'corrupted')}
+          isDragOver={dragTarget === 'corrupted'}
+          onDragOverChange={(over) => setDragTarget(over ? 'corrupted' : null)}
+          scrollContainerRef={scrollContainerRef}
+          reducedMotion={reducedMotion}
+        />
+      ) : (
+        <div
+          className={`source-summary-bar${dragTarget === 'corrupted' ? ' is-drag-over' : ''}`}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragTarget('corrupted');
+          }}
+          onDragLeave={() => setDragTarget((prev) => (prev === 'corrupted' ? null : prev))}
+          onDrop={(e) => void handleDropFile(e, 'corrupted')}
+        >
+          <div className="source-summary-main">
+            <div className="workflow-steps" aria-label="Orientasi alur kerja">
+              <span className="workflow-step is-done">1 Sumber</span>
+              <span aria-hidden="true">·</span>
+              <span className={`workflow-step${centers.length > 0 ? ' is-done' : ' is-current'}`}>
+                2 Spektrum
+              </span>
+              <span aria-hidden="true">·</span>
+              <span className={`workflow-step${output ? ' is-done' : ''}`}>3 Hasil</span>
+            </div>
+            <div className="source-summary-meta">
+              <strong className="source-filename">{corrupted.name}</strong>
+              <span className="mono-value">
+                {corrupted.width} × {corrupted.height} px
+                {corrupted.wasResized
+                  ? ` (dari ${corrupted.originalWidth} × ${corrupted.originalHeight})`
+                  : ''}
+              </span>
+              <span className="source-ref-tag">
+                {reference
+                  ? `Referensi: ${reference.name}`
+                  : 'Tanpa referensi bersih'}
+              </span>
+            </div>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+
+          <div className="source-summary-actions">
             {analyzing ? (
               <span className="busy-pill" role="status" aria-live="polite">
                 Menghitung FFT 2D...
@@ -476,80 +547,24 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
             ) : null}
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-compact"
               disabled={analyzing}
-              onClick={handleLoadSample}
+              onClick={() => corruptedInputRef.current?.click()}
             >
-              Muat sampel Camera + gangguan
+              Ganti gambar
             </button>
             <button
               type="button"
-              className="btn"
+              className="btn btn-compact"
               disabled={analyzing}
-              onClick={handleLoadBoyNoisySample}
+              onClick={() => referenceInputRef.current?.click()}
             >
-              Muat sampel Boy Noisy (PGM)
+              {reference ? 'Ganti referensi' : 'Tambah referensi'}
             </button>
-          </div>
-        </div>
-
-        <div className="upload-grid">
-          <div
-            className={`file-dropzone${dragTarget === 'corrupted' ? ' is-drag-over' : ''}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragTarget('corrupted');
-            }}
-            onDragLeave={() => setDragTarget((prev) => (prev === 'corrupted' ? null : prev))}
-            onDrop={(e) => void handleDropFile(e, 'corrupted')}
-          >
-            <label htmlFor={corruptedInputId} className="file-dropzone-label">
-              Gambar terganggu (PNG, JPG, WebP, PGM)
-            </label>
-            <input
-              id={corruptedInputId}
-              type="file"
-              accept=".png,.jpg,.jpeg,.webp,.pgm,image/png,image/jpeg,image/webp"
-              className="file-input"
-              onChange={handleCorruptedUpload}
-            />
-            <span className="file-dropzone-hint">
-              {corrupted
-                ? `Aktif: ${corrupted.name} (${corrupted.width} x ${corrupted.height} px${corrupted.wasResized ? `, diubah dari ${corrupted.originalWidth} x ${corrupted.originalHeight}` : ''})`
-                : 'Seret gambar ke sini atau pilih berkas.'}
-            </span>
-          </div>
-
-          <div
-            className={`file-dropzone${dragTarget === 'reference' ? ' is-drag-over' : ''}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragTarget('reference');
-            }}
-            onDragLeave={() => setDragTarget((prev) => (prev === 'reference' ? null : prev))}
-            onDrop={(e) => void handleDropFile(e, 'reference')}
-          >
-            <label htmlFor={referenceInputId} className="file-dropzone-label">
-              Referensi bersih (opsional, untuk PSNR dan SSIM)
-            </label>
-            <input
-              ref={referenceInputRef}
-              id={referenceInputId}
-              type="file"
-              accept=".png,.jpg,.jpeg,.webp,.pgm,image/png,image/jpeg,image/webp"
-              className="file-input"
-              onChange={handleReferenceUpload}
-            />
-            <span className="file-dropzone-hint">
-              {reference
-                ? `Referensi: ${reference.name} (${reference.width} x ${reference.height} px)`
-                : 'Unggah gambar bersih berukuran sama bila ingin mengukur PSNR dan SSIM.'}
-            </span>
             {reference ? (
               <button
                 type="button"
                 className="btn btn-compact"
-                style={{ alignSelf: 'flex-start' }}
                 onClick={() => {
                   setReference(null);
                   setReferenceError(null);
@@ -561,19 +576,7 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
             ) : null}
           </div>
         </div>
-
-        <div className="checkbox-row">
-          <input
-            id={limitCheckboxId}
-            type="checkbox"
-            checked={limitResolution}
-            onChange={(e) => setLimitResolution(e.target.checked)}
-          />
-          <label htmlFor={limitCheckboxId}>
-            Batasi sisi maksimum unggahan baru hingga {DEFAULT_MAX_DIMENSION} px agar komputasi FFT 2D tetap responsif di browser (batas mutlak 2048 px)
-          </label>
-        </div>
-      </div>
+      )}
 
       {errorMessage ? (
         <div className="status-banner status-banner-error" role="alert">
@@ -586,18 +589,6 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
         <div className="status-banner status-banner-warning" role="alert">
           <span className="status-prefix">PERINGATAN</span>
           <span>{referenceError}</span>
-        </div>
-      ) : null}
-
-      {!corrupted && !analyzing ? (
-        <div className="empty-state">
-          <h2>Belum ada gambar yang dimuat</h2>
-          <p>
-            Pilih gambar dengan gangguan garis periodik dari perangkat Anda, atau klik tombol di bawah untuk langsung menguji sampel citra Camera 512 x 512 beserta referensi bersihnya.
-          </p>
-          <button type="button" className="btn btn-primary" disabled={analyzing} onClick={handleLoadSample}>
-            Muat sampel Camera + gangguan
-          </button>
         </div>
       ) : null}
 
@@ -776,7 +767,7 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                           animate={{ opacity: 1, scale: 1 }}
                           exit={{ opacity: 0, scale: 0.8 }}
                           whileTap={{ scale: 0.94 }}
-                          transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+                          transition={MOTION_SPRING.chip}
                           type="button"
                           className="notch-chip notch-chip-active"
                           aria-label={`Hapus titik notch y=${pt.y}, x=${pt.x}`}
@@ -836,40 +827,57 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                 )}
               </div>
 
-              <div className="control-grid">
-                <div className="field">
-                  <label htmlFor={sigmaId} className="field-label">
-                    <span>Lebar notch (sigma)</span>
-                    <span className="mono-value">{notchSigma.toFixed(1)}</span>
-                  </label>
-                  <input
-                    id={sigmaId}
-                    type="range"
-                    min={0.3}
-                    max={10.0}
-                    step={0.1}
-                    value={notchSigma}
-                    onChange={(e) => setNotchSigma(Number(e.target.value))}
-                    className="range-input"
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor={blurSigmaId} className="field-label">
-                    <span>Sigma Gaussian blur pembanding</span>
-                    <span className="mono-value">{blurSigma.toFixed(1)}</span>
-                  </label>
-                  <input
-                    id={blurSigmaId}
-                    type="range"
-                    min={0.1}
-                    max={5.0}
-                    step={0.1}
-                    value={blurSigma}
-                    onChange={(e) => setBlurSigma(Number(e.target.value))}
-                    className="range-input"
-                  />
-                </div>
+              <div className="field">
+                <label htmlFor={sigmaId} className="field-label">
+                  <span>Lebar notch (sigma)</span>
+                  <span className="mono-value">{notchSigma.toFixed(1)}</span>
+                </label>
+                <input
+                  id={sigmaId}
+                  type="range"
+                  min={0.3}
+                  max={10.0}
+                  step={0.1}
+                  value={notchSigma}
+                  onChange={(e) => setNotchSigma(Number(e.target.value))}
+                  className="range-input"
+                />
               </div>
+
+              <details className="advanced-disclosure">
+                <summary className="advanced-summary">
+                  Pengaturan lanjutan (baseline blur, batas resolusi)
+                </summary>
+                <div className="advanced-body section-stack stack-md">
+                  <div className="field">
+                    <label htmlFor={blurSigmaId} className="field-label">
+                      <span>Sigma Gaussian blur pembanding</span>
+                      <span className="mono-value">{blurSigma.toFixed(1)}</span>
+                    </label>
+                    <input
+                      id={blurSigmaId}
+                      type="range"
+                      min={0.1}
+                      max={5.0}
+                      step={0.1}
+                      value={blurSigma}
+                      onChange={(e) => setBlurSigma(Number(e.target.value))}
+                      className="range-input"
+                    />
+                  </div>
+                  <div className="checkbox-row" style={{ marginTop: 0 }}>
+                    <input
+                      id={limitCheckboxId}
+                      type="checkbox"
+                      checked={limitResolution}
+                      onChange={(e) => setLimitResolution(e.target.checked)}
+                    />
+                    <label htmlFor={limitCheckboxId}>
+                      Batasi sisi maksimum unggahan baru hingga {DEFAULT_MAX_DIMENSION} px (batas mutlak 2048 px)
+                    </label>
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
 
@@ -1061,7 +1069,7 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                 <button
                   type="button"
                   className="btn"
-                  disabled={!output.metrics}
+                  disabled={!output.metrics || restoring}
                   onClick={handleDownloadMetricsCsv}
                 >
                   Unduh CSV metrik
@@ -1069,7 +1077,7 @@ export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabT
                 <button
                   type="button"
                   className="btn btn-primary"
-                  disabled={zipping}
+                  disabled={zipping || restoring}
                   onClick={async () => {
                     setZipping(true);
                     try {
