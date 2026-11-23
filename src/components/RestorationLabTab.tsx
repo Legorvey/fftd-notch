@@ -34,7 +34,11 @@ function sameOrSymmetric(
   return d1 <= tolerance || d2 <= tolerance;
 }
 
-export function RestorationLabTab() {
+interface RestorationLabTabProps {
+  quickSampleRequest?: { id: number; kind: 'camera_periodic' | 'boy_noisy' } | null;
+}
+
+export function RestorationLabTab({ quickSampleRequest = null }: RestorationLabTabProps) {
   const [corrupted, setCorrupted] = useState<LoadedImageResult | null>(null);
   const [reference, setReference] = useState<LoadedImageResult | null>(null);
   const [limitResolution, setLimitResolution] = useState(true);
@@ -129,7 +133,7 @@ export function RestorationLabTab() {
     }
   };
 
-  const handleLoadBoyNoisySample = async () => {
+  const handleLoadBoyNoisySample = useCallback(async () => {
     const loadSeq = ++sourceSeqRef.current;
     setErrorMessage(null);
     setReferenceError(null);
@@ -147,7 +151,42 @@ export function RestorationLabTab() {
       setAnalyzing(false);
       setErrorMessage(err instanceof Error ? err.message : 'Gagal memuat sampel boy_noisy.pgm.');
     }
-  };
+  }, [analyzeImage]);
+
+  const handleLoadSampleWrapped = useCallback(async () => {
+    const loadSeq = ++sourceSeqRef.current;
+    setErrorMessage(null);
+    setReferenceError(null);
+    setAutoMode(false);
+    setAnalyzing(true);
+    try {
+      const [noisySample, cleanSample] = await Promise.all([
+        loadImageFromUrl('/samples/camera_periodic.png', 'camera_periodic.png', null),
+        loadImageFromUrl('/samples/camera.png', 'camera.png', null),
+      ]);
+      if (loadSeq !== sourceSeqRef.current) return;
+      setCorrupted(noisySample);
+      setReference(cleanSample);
+      if (referenceInputRef.current) referenceInputRef.current.value = '';
+      await analyzeImage(noisySample, [
+        { y: 256, x: 280 },
+        { y: 288, x: 256 },
+      ]);
+    } catch (err) {
+      if (loadSeq !== sourceSeqRef.current) return;
+      setAnalyzing(false);
+      setErrorMessage(err instanceof Error ? err.message : 'Gagal memuat sampel gambar bawaan.');
+    }
+  }, [analyzeImage]);
+
+  useEffect(() => {
+    if (!quickSampleRequest) return;
+    if (quickSampleRequest.kind === 'camera_periodic') {
+      void handleLoadSampleWrapped();
+    } else {
+      void handleLoadBoyNoisySample();
+    }
+  }, [quickSampleRequest, handleLoadSampleWrapped, handleLoadBoyNoisySample]);
 
   const handleCorruptedUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

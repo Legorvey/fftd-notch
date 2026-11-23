@@ -1,83 +1,57 @@
-import { useRef, type KeyboardEvent } from 'react';
-
-export type ActiveTab = 'lab' | 'camera' | 'experiment' | 'guide';
-export type ThemeMode = 'dark' | 'light';
+import type { RefObject } from 'react';
+import type { ActiveTab, ThemeMode } from './Sidebar';
 
 interface HeaderProps {
   activeTab: ActiveTab;
-  onSelectTab: (tab: ActiveTab) => void;
   theme: ThemeMode;
   onToggleTheme: () => void;
+  mobileOpen: boolean;
+  onOpenMobile: () => void;
+  mobileTriggerRef: RefObject<HTMLButtonElement | null>;
 }
 
-const TABS: ReadonlyArray<{ id: ActiveTab; label: string }> = [
-  { id: 'lab', label: 'Restoration Lab' },
-  { id: 'camera', label: 'Kamera' },
-  { id: 'experiment', label: 'Eksperimen Sinusoid' },
-  { id: 'guide', label: 'Petunjuk' },
-];
+const TAB_TITLES: Record<ActiveTab, string> = {
+  lab: 'Restoration Lab',
+  camera: 'Kamera Web',
+  experiment: 'Eksperimen Sinusoid',
+  guide: 'Petunjuk & Teori',
+};
 
-export function Header({ activeTab, onSelectTab, theme, onToggleTheme }: HeaderProps) {
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-
-  const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let nextIndex: number | null = null;
-    if (event.key === 'ArrowRight') nextIndex = (index + 1) % TABS.length;
-    else if (event.key === 'ArrowLeft') nextIndex = (index - 1 + TABS.length) % TABS.length;
-    else if (event.key === 'Home') nextIndex = 0;
-    else if (event.key === 'End') nextIndex = TABS.length - 1;
-
-    if (nextIndex !== null) {
-      event.preventDefault();
-      const targetTab = TABS[nextIndex]!;
-      onSelectTab(targetTab.id);
-      tabRefs.current[nextIndex]?.focus();
-    }
-  };
-
+export function Header({
+  activeTab,
+  theme,
+  onToggleTheme,
+  mobileOpen,
+  onOpenMobile,
+  mobileTriggerRef,
+}: HeaderProps) {
   return (
-    <header className="site-header">
-      <div className="header-inner">
-        <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-              <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5" />
-              <line x1="10" y1="1.5" x2="10" y2="18.5" stroke="currentColor" strokeWidth="1.2" />
-              <line x1="1.5" y1="10" x2="18.5" y2="10" stroke="currentColor" strokeWidth="1.2" />
-              <circle cx="6" cy="6" r="1.5" fill="currentColor" />
-              <circle cx="14" cy="14" r="1.5" fill="currentColor" />
-            </svg>
-          </div>
-          <div className="brand-text">
-            <h1 className="brand-title">Mini Image Restoration Lab</h1>
-            <p className="brand-subtitle">Reduksi gangguan periodik dengan FFT 2D dan Gaussian notch filter</p>
-          </div>
+    <header className="top-bar">
+      <div className="top-bar-left">
+        <button
+          ref={mobileTriggerRef}
+          type="button"
+          className="btn btn-compact mobile-menu-trigger"
+          onClick={onOpenMobile}
+          aria-expanded={mobileOpen}
+          aria-controls="app-sidebar"
+        >
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
+          <span>Menu</span>
+        </button>
+
+        <div className="breadcrumb" aria-label="Lokasi halaman saat ini">
+          <h1 className="top-bar-title">Mini Image Restoration Lab</h1>
+          <span className="breadcrumb-sep" aria-hidden="true">
+            /
+          </span>
+          <span className="breadcrumb-current">{TAB_TITLES[activeTab]}</span>
         </div>
+      </div>
 
-        <nav className="header-nav-wrap" aria-label="Navigasi utama lab">
-          <div className="header-nav" role="tablist" aria-label="Pilihan tampilan lab">
-            {TABS.map((tab, index) => (
-              <button
-                key={tab.id}
-                ref={(el) => {
-                  tabRefs.current[index] = el;
-                }}
-                id={`tab-${tab.id}`}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.id}
-                aria-controls={`panel-${tab.id}`}
-                tabIndex={activeTab === tab.id ? 0 : -1}
-                className="tab-button"
-                onClick={() => onSelectTab(tab.id)}
-                onKeyDown={(e) => handleTabKeyDown(e, index)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </nav>
-
+      <div className="top-bar-right">
         <button
           type="button"
           className="theme-toggle"
