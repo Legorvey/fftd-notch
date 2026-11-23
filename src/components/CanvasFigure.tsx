@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { drawArrayToCanvas, type ColorMapMode } from '../dsp/colormap';
 
 interface CanvasFigureProps {
@@ -11,7 +11,7 @@ interface CanvasFigureProps {
   autoScale?: boolean;
 }
 
-export function CanvasFigure({
+export const CanvasFigure = memo(function CanvasFigure({
   title,
   note,
   data,
@@ -46,4 +46,4 @@ export function CanvasFigure({
       </div>
     </figure>
   );
-}
+});

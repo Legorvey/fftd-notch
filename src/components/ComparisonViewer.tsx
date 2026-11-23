@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
+import { memo, useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { drawArrayToCanvas } from '../dsp/colormap';
 
 interface ComparisonViewerProps {
@@ -10,7 +10,7 @@ interface ComparisonViewerProps {
   height: number;
 }
 
-export function ComparisonViewer({
+export const ComparisonViewer = memo(function ComparisonViewer({
   leftLabel,
   leftData,
   rightLabel,
@@ -24,6 +24,8 @@ export function ComparisonViewer({
   const stageRectRef = useRef<DOMRect | null>(null);
   const leftCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const rightCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rafIdRef = useRef<number | null>(null);
+  const pendingClientXRef = useRef<number | null>(null);
   const sliderId = useId();
 
   useEffect(() => {
@@ -38,11 +40,30 @@ export function ComparisonViewer({
     }
   }, [rightData, width, height]);
 
-  const updateFromClientX = (clientX: number) => {
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
+
+  const commitClientX = (clientX: number) => {
     const rect = stageRectRef.current ?? stageRef.current?.getBoundingClientRect();
     if (!rect || rect.width <= 0) return;
     const pct = Math.min(100, Math.max(0, Math.round(((clientX - rect.left) / rect.width) * 100)));
     setSplitPercent(pct);
+  };
+
+  const updateFromClientX = (clientX: number) => {
+    pendingClientXRef.current = clientX;
+    if (rafIdRef.current !== null) return;
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      if (pendingClientXRef.current !== null) {
+        commitClientX(pendingClientXRef.current);
+      }
+    });
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -50,7 +71,7 @@ export function ComparisonViewer({
     stageRectRef.current = stageRef.current?.getBoundingClientRect() ?? null;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDragging(true);
-    updateFromClientX(event.clientX);
+    commitClientX(event.clientX);
   };
 
   const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
@@ -63,16 +84,37 @@ export function ComparisonViewer({
     stageRectRef.current = null;
   };
 
+  const handleStageKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = event.shiftKey ? 10 : 2;
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      setSplitPercent((p) => Math.max(0, p - step));
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      setSplitPercent((p) => Math.min(100, p + step));
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      setSplitPercent(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      setSplitPercent(100);
+    }
+  };
+
   return (
     <div>
       <div
         ref={stageRef}
-        className="split-stage"
-        style={{ aspectRatio: `${width} / ${height}`, cursor: 'ew-resize' }}
+        className={`split-stage${dragging ? ' is-dragging' : ''}`}
+        tabIndex={0}
+        role="group"
+        aria-label={`Perbandingan ${leftLabel} dan ${rightLabel}. Gunakan panah kiri atau kanan untuk menggeser pemisah.`}
+        style={{ aspectRatio: `${width} / ${height}`, maxHeight: 'min(70dvh, 640px)', cursor: 'ew-resize' }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onKeyDown={handleStageKeyDown}
       >
         <canvas
           ref={rightCanvasRef}
@@ -119,7 +161,33 @@ export function ComparisonViewer({
           aria-valuetext={`${splitPercent}% ${leftLabel}, ${100 - splitPercent}% ${rightLabel}`}
         />
         <span className="mono-value">{splitPercent}%</span>
+        <div className="btn-segmented" role="group" aria-label="Posisi cepat pemisah">
+          <button
+            type="button"
+            className="btn btn-compact btn-toggle"
+            aria-pressed={splitPercent === 0}
+            onClick={() => setSplitPercent(0)}
+          >
+            100% Hasil
+          </button>
+          <button
+            type="button"
+            className="btn btn-compact btn-toggle"
+            aria-pressed={splitPercent === 50}
+            onClick={() => setSplitPercent(50)}
+          >
+            50/50
+          </button>
+          <button
+            type="button"
+            className="btn btn-compact btn-toggle"
+            aria-pressed={splitPercent === 100}
+            onClick={() => setSplitPercent(100)}
+          >
+            100% Asli
+          </button>
+        </div>
       </div>
     </div>
   );
-}
+});

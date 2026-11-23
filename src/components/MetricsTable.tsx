@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { formatDelta, formatPsnr, formatSsim } from '../dsp/format';
 import type { QualityMetrics } from '../dsp/types';
 
@@ -9,7 +10,7 @@ interface MetricsTableProps {
   };
 }
 
-export function MetricsTable({ metrics }: MetricsTableProps) {
+export const MetricsTable = memo(function MetricsTable({ metrics }: MetricsTableProps) {
   const base = metrics.noCorrection;
   const blur = metrics.gaussianBlur;
   const notch = metrics.notchFilter;
@@ -30,7 +31,7 @@ export function MetricsTable({ metrics }: MetricsTableProps) {
   ];
 
   return (
-    <div className="section-stack" style={{ gap: '0.9rem' }}>
+    <div className="section-stack stack-md">
       <div className="kpi-grid" aria-label="Ringkasan metrik restorasi">
         <div className="kpi-card kpi-card-primary">
           <span className="kpi-label">PSNR Notch Filter</span>
@@ -94,4 +95,4 @@ export function MetricsTable({ metrics }: MetricsTableProps) {
       </div>
     </div>
   );
-}
+});

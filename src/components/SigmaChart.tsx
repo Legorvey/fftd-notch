@@ -10,6 +10,7 @@ interface SigmaChartProps {
 
 export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProps) {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   useEffect(() => {
     const matchIdx = sweep.findIndex((pt) => Math.abs(pt.sigma - activeSigma) < 0.05);
@@ -18,8 +19,9 @@ export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProp
 
   if (sweep.length === 0) return null;
 
+  const activeVisualIndex = hoveredIndex !== null ? hoveredIndex : selectedIndex;
   const bestPoint = sweep.reduce((best, cur) => (cur.psnrDb > best.psnrDb ? cur : best), sweep[0]!);
-  const inspected = selectedIndex !== null ? sweep[selectedIndex] ?? bestPoint : bestPoint;
+  const inspected = activeVisualIndex !== null ? sweep[activeVisualIndex] ?? bestPoint : bestPoint;
 
   const svgWidth = 680;
   const svgHeight = 250;
@@ -195,6 +197,10 @@ export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProp
           {sweep.map((pt, idx) => {
             const x = xPos(pt.sigma);
             const isCurrent = Math.abs(pt.sigma - activeSigma) < 0.05;
+            const prevX = idx > 0 ? xPos(sweep[idx - 1]!.sigma) : padLeft;
+            const nextX = idx < sweep.length - 1 ? xPos(sweep[idx + 1]!.sigma) : padLeft + plotW;
+            const colLeft = idx === 0 ? padLeft : (prevX + x) / 2;
+            const colRight = idx === sweep.length - 1 ? padLeft + plotW : (x + nextX) / 2;
             return (
               <g key={pt.sigma}>
                 <circle
@@ -214,7 +220,7 @@ export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProp
                   stroke="var(--bg-panel)"
                   strokeWidth="1.2"
                 />
-                {selectedIndex === idx ? (
+                {activeVisualIndex === idx ? (
                   <circle
                     cx={x}
                     cy={yPsnr(pt.psnrDb)}
@@ -222,6 +228,22 @@ export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProp
                     fill="none"
                     stroke="var(--text-primary)"
                     strokeWidth="1.5"
+                  />
+                ) : null}
+                {onSelectSigma ? (
+                  <rect
+                    x={colLeft}
+                    y={padTop}
+                    width={Math.max(8, colRight - colLeft)}
+                    height={plotH}
+                    fill="transparent"
+                    className="chart-hit-col"
+                    onMouseEnter={() => setHoveredIndex(idx)}
+                    onMouseLeave={() => setHoveredIndex(null)}
+                    onClick={() => {
+                      setSelectedIndex(idx);
+                      onSelectSigma(pt.sigma);
+                    }}
                   />
                 ) : null}
               </g>
@@ -259,8 +281,10 @@ export function SigmaChart({ sweep, activeSigma, onSelectSigma }: SigmaChartProp
                 type="button"
                 className="btn btn-compact btn-toggle"
                 aria-pressed={isSelected}
-                onMouseEnter={() => setSelectedIndex(idx)}
-                onFocus={() => setSelectedIndex(idx)}
+                onMouseEnter={() => setHoveredIndex(idx)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                onFocus={() => setHoveredIndex(idx)}
+                onBlur={() => setHoveredIndex(null)}
                 onClick={() => {
                   setSelectedIndex(idx);
                   onSelectSigma(pt.sigma);
