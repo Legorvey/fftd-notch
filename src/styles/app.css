@@ -129,9 +129,10 @@ select:disabled,
 
 .top-bar-title {
   margin: 0;
-  font-size: 0.96rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -226,8 +227,10 @@ select:disabled,
 }
 
 .sidebar-brand-title {
-  font-size: 0.88rem;
+  font-family: var(--font-display);
+  font-size: 0.94rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -486,7 +489,7 @@ select:disabled,
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-panel);
   padding: var(--space-4);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--panel-highlight), var(--shadow-panel);
   min-width: 0;
 }
 
@@ -501,8 +504,10 @@ select:disabled,
 
 .panel-title {
   margin: 0;
-  font-size: 1.05rem;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: 1.14rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
 }
 
@@ -512,18 +517,88 @@ select:disabled,
   color: var(--text-secondary);
 }
 
+.workspace-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 .page-heading {
   margin: 0 0 var(--space-1);
-  font-size: clamp(1.2rem, 2.5vw, 1.55rem);
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display);
+  font-size: clamp(1.45rem, 2.8vw, 2.05rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
 .page-lead {
   margin: 0;
   font-size: 0.95rem;
   color: var(--text-secondary);
-  max-width: 72ch;
+  max-width: 68ch;
+}
+
+.telemetry-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-recessed);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--telemetry);
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+.kpi-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--bg-recessed);
+}
+
+.kpi-card-primary {
+  border-color: var(--accent-text);
+  background: var(--accent-tint);
+}
+
+.kpi-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.kpi-value {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.kpi-delta {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
 }
 
 /* Workbench grids: 3-state responsive reflow (mobile, tablet, desktop) */
@@ -1128,6 +1203,10 @@ select:disabled,
 
   .panel {
     padding: var(--space-5);
+  }
+
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .upload-grid {

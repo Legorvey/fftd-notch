@@ -1,23 +1,27 @@
 :root,
 [data-theme='dark'] {
   color-scheme: dark;
-  --bg-base: #0e1114;
-  --bg-panel: #161b20;
-  --bg-elevated: #1e252c;
-  --bg-canvas: #090b0e;
+  --bg-base: #090b0e;
+  --bg-panel: #11151b;
+  --bg-recessed: #0c0f14;
+  --bg-elevated: #181e27;
+  --bg-canvas: #06080a;
 
-  --border-subtle: #2b343e;
-  --border-control: #6e7d8e;
+  --border-subtle: #232b36;
+  --border-control: #5e6b7d;
 
-  --text-primary: #edf1f5;
-  --text-secondary: #a8b3c0;
+  --text-primary: #f3f5f8;
+  --text-secondary: #9eaab8;
 
-  --accent: #f0a53a;
-  --accent-hover: #f5b759;
-  --accent-active: #d98e24;
-  --accent-ink: #121518;
-  --accent-text: #f5b759;
-  --accent-tint: rgba(240, 165, 58, 0.14);
+  --accent: #f5a623;
+  --accent-hover: #fbbf24;
+  --accent-active: #d9880b;
+  --accent-ink: #111317;
+  --accent-text: #fbbf24;
+  --accent-tint: rgba(245, 166, 35, 0.13);
+
+  --telemetry: #22d3ee;
+  --telemetry-tint: rgba(34, 211, 238, 0.1);
 
   --status-success: #4ade80;
   --status-success-bg: rgba(74, 222, 128, 0.12);
@@ -26,52 +30,59 @@
   --status-error: #f87171;
   --status-error-bg: rgba(248, 113, 113, 0.14);
 
-  --scrim-bg: rgba(14, 17, 20, 0.88);
-  --scrim-text: #edf1f5;
+  --scrim-bg: rgba(9, 11, 14, 0.9);
+  --scrim-text: #f3f5f8;
 
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --panel-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  --shadow-panel: 0 1px 3px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.22);
 }
 
 [data-theme='light'] {
   color-scheme: light;
-  --bg-base: #f5f4f0;
+  --bg-base: #f4f1ea;
   --bg-panel: #ffffff;
-  --bg-elevated: #eae8e1;
-  --bg-canvas: #14171a;
+  --bg-recessed: #ebe7de;
+  --bg-elevated: #f8f6f1;
+  --bg-canvas: #12151a;
 
-  --border-subtle: #d6d2c6;
-  --border-control: #6e6a5e;
+  --border-subtle: #dcd6c8;
+  --border-control: #6b7280;
 
-  --text-primary: #171a1e;
-  --text-secondary: #4d5560;
+  --text-primary: #14171c;
+  --text-secondary: #4b5563;
 
-  --accent: #a85200;
-  --accent-hover: #8f4500;
-  --accent-active: #753800;
+  --accent: #b45309;
+  --accent-hover: #92400e;
+  --accent-active: #78350f;
   --accent-ink: #ffffff;
-  --accent-text: #9a4a00;
-  --accent-tint: rgba(168, 82, 0, 0.1);
+  --accent-text: #92400e;
+  --accent-tint: rgba(180, 83, 9, 0.09);
+
+  --telemetry: #0e7490;
+  --telemetry-tint: rgba(14, 116, 144, 0.09);
 
   --status-success: #146c32;
   --status-success-bg: rgba(20, 108, 50, 0.1);
-  --status-warning: #9a4a00;
-  --status-warning-bg: rgba(154, 74, 0, 0.1);
+  --status-warning: #92400e;
+  --status-warning-bg: rgba(180, 83, 9, 0.1);
   --status-error: #b91c1c;
   --status-error-bg: rgba(185, 28, 28, 0.1);
 
-  --scrim-bg: rgba(23, 26, 30, 0.88);
+  --scrim-bg: rgba(20, 23, 28, 0.9);
   --scrim-text: #ffffff;
 
-  --shadow-panel: 0 1px 3px rgba(23, 26, 30, 0.08);
+  --panel-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --shadow-panel: 0 1px 2px rgba(20, 23, 28, 0.06), 0 6px 18px rgba(20, 23, 28, 0.04);
 }
 
 :root {
-  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif;
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius-display: 2px;
-  --radius-control: 6px;
-  --radius-panel: 8px;
+  --radius-display: 3px;
+  --radius-control: 7px;
+  --radius-panel: 10px;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
