@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from '../src/App';
+import { CameraTab } from '../src/components/CameraTab';
 import { ErrorBoundary } from '../src/components/ErrorBoundary';
 import { MetricsTable } from '../src/components/MetricsTable';
 import { RestorationLabTab } from '../src/components/RestorationLabTab';
@@ -28,7 +29,7 @@ describe('App navigation and theme controls', () => {
 
     expect(labTab).toHaveAttribute('aria-selected', 'true');
     expect(
-      screen.getByRole('heading', { name: 'Pemulihan citra dengan pola gangguan periodik' }),
+      screen.getByRole('heading', { name: 'Pisahkan gangguan. Temukan kembali detail.' }),
     ).toBeInTheDocument();
 
     fireEvent.click(cameraTab);
@@ -41,7 +42,7 @@ describe('App navigation and theme controls', () => {
     expect(experimentTab).toHaveAttribute('aria-selected', 'true');
     expect(labTab).toHaveAttribute('aria-selected', 'false');
     expect(
-      await screen.findByRole('heading', { name: 'Eksperimen dua sinusoid spasial terkontrol' }),
+      await screen.findByRole('heading', { name: 'Lihat bagaimana frekuensi membentuk gangguan.' }),
     ).toBeInTheDocument();
 
     fireEvent.click(guideTab);
@@ -55,7 +56,7 @@ describe('App navigation and theme controls', () => {
     fireEvent.click(labTab);
     expect(labTab).toHaveAttribute('aria-selected', 'true');
     expect(
-      screen.getByRole('heading', { name: 'Pemulihan citra dengan pola gangguan periodik' }),
+      screen.getByRole('heading', { name: 'Pisahkan gangguan. Temukan kembali detail.' }),
     ).toBeInTheDocument();
   });
 
@@ -124,12 +125,15 @@ describe('App navigation and theme controls', () => {
     expect(window.localStorage.getItem('mini-restoration-lab-theme')).toBe('dark');
   });
 
-  it('filters sidebar menu items and collapses/expands desktop sidebar rail', () => {
+  it('filters sidebar menu items with valid roving tabindex and collapses/expands desktop sidebar rail', () => {
     render(<App />);
 
     const searchInput = screen.getByPlaceholderText('Cari menu...');
     fireEvent.change(searchInput, { target: { value: 'sinusoid' } });
-    expect(screen.getByRole('tab', { name: 'Eksperimen Sinusoid' })).toBeInTheDocument();
+    const filteredTab = screen.getByRole('tab', { name: 'Eksperimen Sinusoid' });
+    expect(filteredTab).toBeInTheDocument();
+    // Even though active tab (Restoration Lab) is filtered out, first visible tab remains keyboard-focusable.
+    expect(filteredTab).toHaveAttribute('tabindex', '0');
     expect(screen.queryByRole('tab', { name: 'Restoration Lab' })).not.toBeInTheDocument();
 
     fireEvent.keyDown(searchInput, { key: 'Escape' });
@@ -143,23 +147,48 @@ describe('App navigation and theme controls', () => {
       'false',
     );
   });
+
+  it('preserves tab component state when switching away and returning (P0 tab persistence)', async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Eksperimen Sinusoid' }));
+
+    const u1Input = (await screen.findByLabelText(/Frekuensi u1/i)) as HTMLInputElement;
+    fireEvent.change(u1Input, { target: { value: '42' } });
+    expect(u1Input.value).toBe('42');
+
+    // Switch to Guide and back to Experiment — value must persist without remounting.
+    fireEvent.click(screen.getByRole('tab', { name: 'Petunjuk & Teori' }));
+    await screen.findByRole('heading', { name: 'Petunjuk penggunaan dan dasar teori FFT 2D Notch' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Eksperimen Sinusoid' }));
+    expect((screen.getByLabelText(/Frekuensi u1/i) as HTMLInputElement).value).toBe('42');
+  });
+
+  it('opens mobile drawer as an accessible modal dialog and closes on Escape', () => {
+    render(<App />);
+    const menuBtn = screen.getByRole('button', { name: /Menu/i });
+    fireEvent.click(menuBtn);
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toBeInTheDocument();
+
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
 });
 
 describe('RestorationLabTab empty state', () => {
-  it('displays instructions and an actionable sample-loading button when no image is loaded', () => {
+  it('displays Spectral Instrument intro with interactive sample CTA and upload action when no image is loaded', () => {
     render(<RestorationLabTab />);
 
-    const emptyHeading = screen.getByRole('heading', { name: 'Belum ada gambar yang dimuat' });
-    const emptyState = emptyHeading.closest('.empty-state') as HTMLElement | null;
-    expect(emptyState).not.toBeNull();
-
-    const scoped = within(emptyState!);
     expect(
-      scoped.getByText(/Pilih gambar dengan gangguan garis periodik dari perangkat Anda/i),
+      screen.getByRole('heading', { name: 'Pisahkan gangguan. Temukan kembali detail.' }),
     ).toBeInTheDocument();
+    expect(screen.getByText('LAB RESTORASI CITRA · FFT 2D')).toBeInTheDocument();
 
-    const loadSampleBtn = scoped.getByRole('button', { name: 'Muat sampel Camera + gangguan' });
-    expect(loadSampleBtn).toBeEnabled();
+    const primaryCta = screen.getByRole('button', { name: 'Coba contoh interaktif' });
+    expect(primaryCta).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Unggah gambar' })).toBeEnabled();
   });
 });
 
@@ -226,6 +255,33 @@ describe('MetricsTable', () => {
     expect(notchCells[2]).toHaveClass('metric-delta-pos');
     expect(notchCells[3]).toHaveTextContent('Tidak tersedia');
     expect(notchCells[4]).toHaveTextContent('Tidak tersedia');
+  });
+
+  it('uses neutral comparison copy for negative and zero deltas against Gaussian blur', () => {
+    const { rerender } = render(
+      <MetricsTable
+        metrics={{
+          noCorrection: { psnrDb: 20.0, ssim: 0.5 },
+          gaussianBlur: { psnrDb: 25.0, ssim: 0.7 },
+          notchFilter: { psnrDb: 22.5, ssim: 0.65 },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Selisih terhadap Gaussian blur')).toBeInTheDocument();
+    expect(screen.getByText(/Lebih rendah 2\.50 dB dari Gaussian blur/)).toBeInTheDocument();
+
+    rerender(
+      <MetricsTable
+        metrics={{
+          noCorrection: { psnrDb: 20.0, ssim: 0.5 },
+          gaussianBlur: { psnrDb: 25.0, ssim: 0.7 },
+          notchFilter: { psnrDb: 25.0, ssim: 0.7 },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Setara dengan Gaussian blur/)).toBeInTheDocument();
   });
 });
 
@@ -316,5 +372,74 @@ describe('ErrorBoundary', () => {
     } finally {
       consoleErrorSpy.mockRestore();
     }
+  });
+});
+
+describe('Motion preferences and CameraTab lifecycle', () => {
+  it('toggles data-reduced-motion via header Animasi button', () => {
+    render(<App />);
+    const motionBtn = screen.getByRole('button', { name: 'Animasi dikurangi' });
+    expect(motionBtn).toHaveAttribute('aria-pressed', 'false');
+    expect(document.documentElement.getAttribute('data-reduced-motion')).toBe('false');
+
+    fireEvent.click(motionBtn);
+    expect(motionBtn).toHaveAttribute('aria-pressed', 'true');
+    expect(document.documentElement.getAttribute('data-reduced-motion')).toBe('true');
+  });
+
+  it('requests camera only on click, stops tracks when tab becomes inactive, and stops late-resolving streams', async () => {
+    const stopTrack = vi.fn();
+    const mockStream = {
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream;
+
+    let resolveLateStream: ((stream: MediaStream) => void) | undefined;
+    const getUserMediaMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockStream)
+      .mockImplementationOnce(
+        () =>
+          new Promise<MediaStream>((resolve) => {
+            resolveLateStream = resolve;
+          }),
+      );
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia: getUserMediaMock },
+    });
+
+    const playMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLMediaElement.prototype, 'play', {
+      configurable: true,
+      value: playMock,
+    });
+
+    const { rerender } = render(<CameraTab isActive />);
+    expect(getUserMediaMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aktifkan kamera' }));
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalledTimes(1));
+    expect(getUserMediaMock).toHaveBeenCalledWith(
+      expect.objectContaining({ audio: false }),
+    );
+    await screen.findByRole('button', { name: 'Matikan kamera' });
+
+    // Switching away stops active media tracks.
+    rerender(<CameraTab isActive={false} />);
+    expect(stopTrack).toHaveBeenCalledTimes(1);
+
+    // Re-activate, click start, then switch away before permission promise resolves.
+    rerender(<CameraTab isActive />);
+    fireEvent.click(screen.getByRole('button', { name: 'Aktifkan kamera' }));
+    rerender(<CameraTab isActive={false} />);
+
+    const lateStop = vi.fn();
+    const triggerLate = resolveLateStream as ((stream: MediaStream) => void) | undefined;
+    triggerLate?.({
+      getTracks: () => [{ stop: lateStop }],
+    } as unknown as MediaStream);
+
+    await waitFor(() => expect(lateStop).toHaveBeenCalledTimes(1));
   });
 });
