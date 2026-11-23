@@ -18,13 +18,13 @@ afterEach(() => {
 });
 
 describe('App navigation and theme controls', () => {
-  it('switches tabs via click between Restoration Lab, Kamera, Eksperimen Sinusoid, and Petunjuk', () => {
+  it('switches tabs via click between Restoration Lab, Kamera Web, Eksperimen Sinusoid, and Petunjuk & Teori', () => {
     render(<App />);
 
     const labTab = screen.getByRole('tab', { name: 'Restoration Lab' });
-    const cameraTab = screen.getByRole('tab', { name: 'Kamera' });
+    const cameraTab = screen.getByRole('tab', { name: 'Kamera Web' });
     const experimentTab = screen.getByRole('tab', { name: 'Eksperimen Sinusoid' });
-    const guideTab = screen.getByRole('tab', { name: 'Petunjuk' });
+    const guideTab = screen.getByRole('tab', { name: 'Petunjuk & Teori' });
 
     expect(labTab).toHaveAttribute('aria-selected', 'true');
     expect(
@@ -59,34 +59,34 @@ describe('App navigation and theme controls', () => {
     ).toBeInTheDocument();
   });
 
-  it('switches tabs and moves focus with ArrowRight, ArrowLeft, Home, and End keys', () => {
+  it('switches tabs and moves focus with ArrowDown, ArrowUp, Home, and End keys', () => {
     render(<App />);
 
     const labTab = screen.getByRole('tab', { name: 'Restoration Lab' });
-    const cameraTab = screen.getByRole('tab', { name: 'Kamera' });
+    const cameraTab = screen.getByRole('tab', { name: 'Kamera Web' });
     const experimentTab = screen.getByRole('tab', { name: 'Eksperimen Sinusoid' });
-    const guideTab = screen.getByRole('tab', { name: 'Petunjuk' });
+    const guideTab = screen.getByRole('tab', { name: 'Petunjuk & Teori' });
 
     labTab.focus();
     expect(labTab).toHaveFocus();
 
-    fireEvent.keyDown(labTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(labTab, { key: 'ArrowDown' });
     expect(cameraTab).toHaveAttribute('aria-selected', 'true');
     expect(cameraTab).toHaveFocus();
 
-    fireEvent.keyDown(cameraTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(cameraTab, { key: 'ArrowDown' });
     expect(experimentTab).toHaveAttribute('aria-selected', 'true');
     expect(experimentTab).toHaveFocus();
 
-    fireEvent.keyDown(experimentTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(experimentTab, { key: 'ArrowDown' });
     expect(guideTab).toHaveAttribute('aria-selected', 'true');
     expect(guideTab).toHaveFocus();
 
-    fireEvent.keyDown(guideTab, { key: 'ArrowRight' });
+    fireEvent.keyDown(guideTab, { key: 'ArrowDown' });
     expect(labTab).toHaveAttribute('aria-selected', 'true');
     expect(labTab).toHaveFocus();
 
-    fireEvent.keyDown(labTab, { key: 'ArrowLeft' });
+    fireEvent.keyDown(labTab, { key: 'ArrowUp' });
     expect(guideTab).toHaveAttribute('aria-selected', 'true');
     expect(guideTab).toHaveFocus();
 
@@ -98,7 +98,7 @@ describe('App navigation and theme controls', () => {
     expect(guideTab).toHaveAttribute('aria-selected', 'true');
     expect(guideTab).toHaveFocus();
 
-    fireEvent.keyDown(guideTab, { key: 'ArrowLeft' });
+    fireEvent.keyDown(guideTab, { key: 'ArrowUp' });
     expect(experimentTab).toHaveAttribute('aria-selected', 'true');
     expect(experimentTab).toHaveFocus();
   });
@@ -106,21 +106,42 @@ describe('App navigation and theme controls', () => {
   it('toggles theme between dark and light, updating documentElement.dataset.theme and aria-pressed', () => {
     render(<App />);
 
-    const toggleButton = screen.getByRole('button', { name: 'Aktifkan mode terang' });
+    const toggleButtons = screen.getAllByRole('button', { name: 'Aktifkan mode terang' });
+    const topToggle = toggleButtons[0]!;
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(toggleButton).toHaveAttribute('aria-pressed', 'false');
+    expect(topToggle).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(toggleButton);
+    fireEvent.click(topToggle);
     expect(document.documentElement.dataset.theme).toBe('light');
-    expect(toggleButton).toHaveAttribute('aria-pressed', 'true');
-    expect(toggleButton).toHaveAttribute('aria-label', 'Aktifkan mode gelap');
+    expect(topToggle).toHaveAttribute('aria-pressed', 'true');
+    expect(topToggle).toHaveAttribute('aria-label', 'Aktifkan mode gelap');
     expect(window.localStorage.getItem('mini-restoration-lab-theme')).toBe('light');
 
-    fireEvent.click(toggleButton);
+    fireEvent.click(topToggle);
     expect(document.documentElement.dataset.theme).toBe('dark');
-    expect(toggleButton).toHaveAttribute('aria-pressed', 'false');
-    expect(toggleButton).toHaveAttribute('aria-label', 'Aktifkan mode terang');
+    expect(topToggle).toHaveAttribute('aria-pressed', 'false');
+    expect(topToggle).toHaveAttribute('aria-label', 'Aktifkan mode terang');
     expect(window.localStorage.getItem('mini-restoration-lab-theme')).toBe('dark');
+  });
+
+  it('filters sidebar menu items and collapses/expands desktop sidebar rail', () => {
+    render(<App />);
+
+    const searchInput = screen.getByPlaceholderText('Cari menu...');
+    fireEvent.change(searchInput, { target: { value: 'sinusoid' } });
+    expect(screen.getByRole('tab', { name: 'Eksperimen Sinusoid' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Restoration Lab' })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(searchInput, { key: 'Escape' });
+    expect(screen.getByRole('tab', { name: 'Restoration Lab' })).toBeInTheDocument();
+
+    const collapseBtn = screen.getByRole('button', { name: 'Ciutkan panel navigasi' });
+    expect(collapseBtn).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(collapseBtn);
+    expect(screen.getByRole('button', { name: 'Luaskan panel navigasi' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 });
 
