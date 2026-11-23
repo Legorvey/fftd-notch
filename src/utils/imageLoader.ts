@@ -23,9 +23,150 @@ function sanitizeDisplayName(name: string): string {
   return cleaned.slice(0, 120) || 'gambar';
 }
 
-// Inspect PNG, JPEG, or WebP magic bytes and header dimensions before browser image decode.
+// Parse Netpbm PGM header (P2 ASCII or P5 binary) and return dimensions + pixel data offset.
+function parsePgmHeader(bytes: Uint8Array): {
+  magic: 'P2' | 'P5';
+  width: number;
+  height: number;
+  maxVal: number;
+  dataOffset: number;
+} {
+  let pos = 0;
+  const tokens: string[] = [];
+
+  const isWs = (b: number) => b === 0x20 || b === 0x09 || b === 0x0a || b === 0x0d;
+
+  while (tokens.length < 4 && pos < bytes.length) {
+    while (pos < bytes.length && isWs(bytes[pos]!)) pos++;
+    if (pos >= bytes.length) break;
+    if (bytes[pos] === 0x23) {
+      while (pos < bytes.length && bytes[pos] !== 0x0a) pos++;
+      continue;
+    }
+    const start = pos;
+    while (pos < bytes.length && !isWs(bytes[pos]!) && bytes[pos] !== 0x23) pos++;
+    tokens.push(String.fromCharCode(...bytes.subarray(start, pos)));
+  }
+
+  if (tokens.length < 4) {
+    throw new Error('Header berkas PGM tidak lengkap.');
+  }
+  const magic = tokens[0];
+  if (magic !== 'P2' && magic !== 'P5') {
+    throw new Error('Hanya format PGM P2 atau P5 yang didukung.');
+  }
+  const width = Number.parseInt(tokens[1]!, 10);
+  const height = Number.parseInt(tokens[2]!, 10);
+  const maxVal = Number.parseInt(tokens[3]!, 10);
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    !Number.isInteger(maxVal) ||
+    width < 1 ||
+    height < 1 ||
+    maxVal < 1 ||
+    maxVal > 65535
+  ) {
+    throw new Error('Dimensi atau maxval pada berkas PGM tidak valid.');
+  }
+  if (pos < bytes.length && isWs(bytes[pos]!)) pos++;
+  return { magic, width, height, maxVal, dataOffset: pos };
+}
+
+function decodePgmBytes(
+  bytes: Uint8Array,
+  name: string,
+  maxDimension: number | null,
+): LoadedImageResult {
+  const { magic, width, height, maxVal, dataOffset } = parsePgmHeader(bytes);
+  if (width < 4 || height < 4) {
+    throw new Error('Ukuran gambar terlalu kecil (minimal 4 x 4 piksel).');
+  }
+  if (
+    width > MAX_DECODE_DIMENSION ||
+    height > MAX_DECODE_DIMENSION ||
+    width * height > MAX_DECODE_PIXELS
+  ) {
+    throw new Error(`Dimensi gambar (${width} x ${height} px) melebihi batas aman pemrosesan.`);
+  }
+
+  const total = width * height;
+  const raw = new Float64Array(total);
+  const invMax = 1.0 / maxVal;
+
+  if (magic === 'P5') {
+    if (maxVal < 256) {
+      if (dataOffset + total > bytes.length) {
+        throw new Error('Data piksel PGM P5 terpotong.');
+      }
+      for (let i = 0; i < total; i++) {
+        raw[i] = bytes[dataOffset + i]! * invMax;
+      }
+    } else {
+      if (dataOffset + total * 2 > bytes.length) {
+        throw new Error('Data piksel PGM P5 16-bit terpotong.');
+      }
+      for (let i = 0; i < total; i++) {
+        const hi = bytes[dataOffset + i * 2]!;
+        const lo = bytes[dataOffset + i * 2 + 1]!;
+        raw[i] = ((hi << 8) | lo) * invMax;
+      }
+    }
+  } else {
+    const ascii = new TextDecoder().decode(bytes.subarray(dataOffset));
+    const parts = ascii.trim().split(/\s+/);
+    if (parts.length < total) {
+      throw new Error('Data piksel PGM P2 terpotong.');
+    }
+    for (let i = 0; i < total; i++) {
+      const val = Number.parseInt(parts[i]!, 10);
+      raw[i] = Number.isFinite(val) ? Math.min(1, Math.max(0, val * invMax)) : 0;
+    }
+  }
+
+  const effectiveCap =
+    maxDimension === null
+      ? MAX_PROCESS_DIMENSION
+      : Math.min(maxDimension, MAX_PROCESS_DIMENSION);
+
+  if (width <= effectiveCap && height <= effectiveCap) {
+    return {
+      width,
+      height,
+      data: raw,
+      name: sanitizeDisplayName(name),
+      originalWidth: width,
+      originalHeight: height,
+      wasResized: false,
+    };
+  }
+
+  const scale = effectiveCap / Math.max(width, height);
+  const targetWidth = Math.max(4, Math.round(width * scale));
+  const targetHeight = Math.max(4, Math.round(height * scale));
+  const resized = new Float64Array(targetWidth * targetHeight);
+  for (let y = 0; y < targetHeight; y++) {
+    const sy = Math.min(height - 1, Math.floor((y * height) / targetHeight));
+    for (let x = 0; x < targetWidth; x++) {
+      const sx = Math.min(width - 1, Math.floor((x * width) / targetWidth));
+      resized[y * targetWidth + x] = raw[sy * width + sx]!;
+    }
+  }
+
+  return {
+    width: targetWidth,
+    height: targetHeight,
+    data: resized,
+    name: sanitizeDisplayName(name),
+    originalWidth: width,
+    originalHeight: height,
+    wasResized: true,
+  };
+}
+
+// Inspect PNG, JPEG, WebP, or PGM magic bytes and header dimensions before browser image decode.
 export function inspectImageHeader(bytes: Uint8Array): {
-  format: 'png' | 'jpeg' | 'webp';
+  format: 'png' | 'jpeg' | 'webp' | 'pgm';
   width: number;
   height: number;
 } {
@@ -118,7 +259,17 @@ export function inspectImageHeader(bytes: Uint8Array): {
     }
   }
 
-  throw new Error('Format tidak didukung. Unggah berkas PNG, JPG, atau WebP yang valid.');
+  if (
+    bytes.length >= 7 &&
+    bytes[0] === 0x50 &&
+    (bytes[1] === 0x32 || bytes[1] === 0x35) &&
+    (bytes[2] === 0x0a || bytes[2] === 0x0d || bytes[2] === 0x20 || bytes[2] === 0x09)
+  ) {
+    const pgm = parsePgmHeader(bytes);
+    return { format: 'pgm', width: pgm.width, height: pgm.height };
+  }
+
+  throw new Error('Format tidak didukung. Unggah berkas PNG, JPG, WebP, atau PGM yang valid.');
 }
 
 function decodeImageElement(src: string): Promise<HTMLImageElement> {
@@ -127,19 +278,18 @@ function decodeImageElement(src: string): Promise<HTMLImageElement> {
     img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
     img.onerror = () =>
-      reject(new Error('Gagal membaca berkas gambar. Pastikan format PNG, JPG, atau WebP valid.'));
+      reject(new Error('Gagal membaca berkas gambar. Pastikan format PNG, JPG, WebP, atau PGM valid.'));
     img.src = src;
   });
 }
 
-function rasterizeImage(
-  img: HTMLImageElement,
+export function rasterizeCanvasSource(
+  source: CanvasImageSource,
+  originalWidth: number,
+  originalHeight: number,
   name: string,
   maxDimension: number | null,
 ): LoadedImageResult {
-  const originalWidth = img.naturalWidth;
-  const originalHeight = img.naturalHeight;
-
   if (originalWidth < 4 || originalHeight < 4) {
     throw new Error('Ukuran gambar terlalu kecil (minimal 4 x 4 piksel).');
   }
@@ -177,7 +327,7 @@ function rasterizeImage(
     if (!ctx) {
       throw new Error('Canvas 2D tidak tersedia pada browser ini.');
     }
-    ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+    ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
     let imageData: ImageData;
     try {
       imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
@@ -224,10 +374,15 @@ export async function loadImageFromFile(
     );
   }
 
+  if (header.format === 'pgm') {
+    const fullBytes = new Uint8Array(await file.arrayBuffer());
+    return decodePgmBytes(fullBytes, file.name, maxDimension);
+  }
+
   const url = URL.createObjectURL(file);
   try {
     const img = await decodeImageElement(url);
-    return rasterizeImage(img, file.name, maxDimension);
+    return rasterizeCanvasSource(img, img.naturalWidth, img.naturalHeight, file.name, maxDimension);
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -246,8 +401,20 @@ export async function loadImageFromUrl(
   if (cached) {
     return { ...cached, data: new Float64Array(cached.data) };
   }
-  const img = await decodeImageElement(url);
-  const result = rasterizeImage(img, label, maxDimension);
+
+  let result: LoadedImageResult;
+  if (url.toLowerCase().endsWith('.pgm')) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Gagal mengunduh sampel PGM (${res.status}).`);
+    }
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    result = decodePgmBytes(bytes, label, maxDimension);
+  } else {
+    const img = await decodeImageElement(url);
+    result = rasterizeCanvasSource(img, img.naturalWidth, img.naturalHeight, label, maxDimension);
+  }
+
   sampleCache.set(cacheKey, { ...result, data: new Float64Array(result.data) });
   return result;
 }

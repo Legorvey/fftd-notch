@@ -315,6 +315,220 @@ function maxFilterWrap2D(
   return out;
 }
 
+function maxFilterReflect2D(
+  src: Float64Array,
+  width: number,
+  height: number,
+  radius: number,
+): Float64Array {
+  const horiz = new Float64Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      let maxVal = -Infinity;
+      for (let dx = -radius; dx <= radius; dx++) {
+        const v = src[row + reflectIndex(x + dx, width)]!;
+        if (v > maxVal) maxVal = v;
+      }
+      horiz[row + x] = maxVal;
+    }
+  }
+
+  const out = new Float64Array(width * height);
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      let maxVal = -Infinity;
+      for (let dy = -radius; dy <= radius; dy++) {
+        const v = horiz[reflectIndex(y + dy, height) * width + x]!;
+        if (v > maxVal) maxVal = v;
+      }
+      out[row + x] = maxVal;
+    }
+  }
+  return out;
+}
+
+function medianOfSorted(buf: Float64Array, len: number): number {
+  const mid = len >> 1;
+  if (len % 2 === 1) return buf[mid]!;
+  return 0.5 * (buf[mid - 1]! + buf[mid]!);
+}
+
+// Separable-free exact 2D median filter with reflect boundary matching scipy.ndimage.median_filter.
+function medianFilterReflect2D(
+  src: Float64Array,
+  width: number,
+  height: number,
+  size: number,
+): Float64Array {
+  const radius = Math.floor(size / 2);
+  const winLen = size * size;
+  const windowBuf = new Float64Array(winLen);
+  const out = new Float64Array(width * height);
+  const mid = winLen >> 1;
+
+  const rowMap = new Int32Array(height + 2 * radius);
+  for (let i = -radius; i < height + radius; i++) {
+    rowMap[i + radius] = reflectIndex(i, height) * width;
+  }
+  const colMap = new Int32Array(width + 2 * radius);
+  for (let i = -radius; i < width + radius; i++) {
+    colMap[i + radius] = reflectIndex(i, width);
+  }
+
+  for (let y = 0; y < height; y++) {
+    const outRow = y * width;
+    for (let x = 0; x < width; x++) {
+      let k = 0;
+      for (let dy = 0; dy < size; dy++) {
+        const srcRow = rowMap[y + dy]!;
+        for (let dx = 0; dx < size; dx++) {
+          windowBuf[k++] = src[srcRow + colMap[x + dx]!]!;
+        }
+      }
+      windowBuf.sort();
+      out[outRow + x] = windowBuf[mid]!;
+    }
+  }
+  return out;
+}
+
+export interface AutoPeakDetectionOptions {
+  zThresh?: number;
+  maxPeaks?: number;
+  minRadius?: number;
+  bgSize?: number;
+}
+
+export function recommendPeakCandidates(
+  spectrum: Float64Array,
+  width: number,
+  height: number,
+  maxPeaks = 4,
+  relativeThreshold = 0.82,
+): PeakCandidate[] {
+  if (!(relativeThreshold > 0 && relativeThreshold <= 1.0) || !Number.isFinite(relativeThreshold)) {
+    throw new Error('relativeThreshold harus berada pada rentang (0, 1].');
+  }
+  const candidates = detectPeakCandidates(spectrum, width, height, {
+    maxPeaks: Math.max(maxPeaks * 4, 12),
+    minDistance: 6,
+    excludeRadius: 10,
+    percentile: 99.5,
+  });
+  if (candidates.length === 0) return [];
+  const strongest = candidates[0]!.value;
+  return candidates.filter((item) => item.value >= strongest * relativeThreshold).slice(0, maxPeaks);
+}
+
+// Hann-windowed FFT + median-background MAD z-score peak detector (mirrors auto_peaks.py).
+export function autoDetectNotchCenters(
+  data: Float64Array,
+  width: number,
+  height: number,
+  options: AutoPeakDetectionOptions = {},
+): PeakCandidate[] {
+  const zThresh = options.zThresh ?? 6.0;
+  const maxPeaks = options.maxPeaks ?? 8;
+  const minRadius = options.minRadius ?? 6;
+  const bgSize = options.bgSize ?? 15;
+
+  if (!Number.isFinite(zThresh) || zThresh <= 0) {
+    throw new Error('zThresh harus lebih besar dari 0.');
+  }
+  if (!Number.isInteger(maxPeaks) || maxPeaks < 1) {
+    throw new Error('maxPeaks minimal 1.');
+  }
+  if (!Number.isInteger(bgSize) || bgSize < 3 || bgSize % 2 === 0) {
+    throw new Error('bgSize harus bilangan ganjil >= 3.');
+  }
+  if (height < 3 || width < 3 || data.length !== width * height) {
+    return [];
+  }
+
+  const total = width * height;
+  let sum = 0;
+  for (let i = 0; i < total; i++) sum += data[i]!;
+  const mean = sum / total;
+
+  const hannY = new Float64Array(height);
+  for (let y = 0; y < height; y++) {
+    hannY[y] = 0.5 * (1 - Math.cos((2 * Math.PI * y) / (height - 1)));
+  }
+  const hannX = new Float64Array(width);
+  for (let x = 0; x < width; x++) {
+    hannX[x] = 0.5 * (1 - Math.cos((2 * Math.PI * x) / (width - 1)));
+  }
+
+  const windowed = new Float64Array(total);
+  for (let y = 0; y < height; y++) {
+    const wy = hannY[y]!;
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      windowed[row + x] = (data[row + x]! - mean) * wy * hannX[x]!;
+    }
+  }
+
+  const { spectrum } = fftSpectrum(windowed, width, height);
+  const bg = medianFilterReflect2D(spectrum, width, height, bgSize);
+
+  const resid = new Float64Array(total);
+  for (let i = 0; i < total; i++) {
+    resid[i] = spectrum[i]! - bg[i]!;
+  }
+
+  const sortedResid = resid.slice();
+  sortedResid.sort();
+  const med = medianOfSorted(sortedResid, total);
+
+  const absDev = new Float64Array(total);
+  for (let i = 0; i < total; i++) {
+    absDev[i] = Math.abs(resid[i]! - med);
+  }
+  absDev.sort();
+  const mad = medianOfSorted(absDev, total) + 1e-12;
+  const invScale = 1.0 / (1.4826 * mad);
+
+  const z = new Float64Array(total);
+  const cy = Math.floor(height / 2);
+  const cx = Math.floor(width / 2);
+  const minR2 = minRadius * minRadius;
+
+  for (let y = 0; y < height; y++) {
+    const dy2 = (y - cy) * (y - cy);
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      const dx = x - cx;
+      if (dy2 + dx * dx < minR2) {
+        z[row + x] = -Infinity;
+      } else {
+        z[row + x] = (resid[row + x]! - med) * invScale;
+      }
+    }
+  }
+
+  const localMax = maxFilterReflect2D(z, width, height, 2);
+  const found: PeakCandidate[] = [];
+
+  for (let y = 0; y < height; y++) {
+    const dy = y - cy;
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      const dx = x - cx;
+      // Keep one canonical point per conjugate-symmetric pair (upper half-plane).
+      if (!(dy < 0 || (dy === 0 && dx > 0))) continue;
+      const zv = z[row + x]!;
+      if (zv > zThresh && zv === localMax[row + x]!) {
+        found.push({ y, x, value: zv });
+      }
+    }
+  }
+
+  found.sort((a, b) => b.value - a.value || a.y - b.y || a.x - b.x);
+  return found.slice(0, maxPeaks);
+}
+
 export interface PeakDetectionOptions {
   maxPeaks?: number;
   minDistance?: number;
