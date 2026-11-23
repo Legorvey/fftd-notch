@@ -5,15 +5,18 @@ import { PNG } from 'pngjs';
 
 import { fft1d, fft2d, fftShift2D, ifftShift2D } from '../src/dsp/fft';
 import {
+  autoDetectNotchCenters,
   buildNotchMask,
   calculateMetrics,
   detectPeakCandidates,
   fftSpectrum,
   gaussianBlur,
   normalizeGrayscaleFromRGBA,
+  recommendPeakCandidates,
   restoreWithNotch,
   symmetricCenter,
 } from '../src/dsp/notch';
+import { buildZipArchive } from '../src/dsp/zip';
 import {
   addPeriodicNoise,
   knownNotchCenters,
@@ -50,6 +53,13 @@ interface GoldenFixture {
     metrics: Record<string, { PSNR_dB: number; SSIM: number }>;
     sweep: { sigma: number; PSNR_dB: number; SSIM: number }[];
     top_candidates: [number, number, number][];
+  };
+  boy_noisy_512x512: {
+    shape: [number, number];
+    auto_centers: [number, number][];
+    recommended: [number, number, number][];
+    restored_mean: number;
+    restored_std: number;
   };
 }
 
@@ -249,6 +259,66 @@ describe('Boundary validation and edge cases', () => {
 
     const svgBytes = new TextEncoder().encode('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
     expect(() => inspectImageHeader(svgBytes)).toThrow(/Format tidak didukung/i);
+  });
+
+  it('parses PGM headers and matches Python auto_detect_notch_centers on boy_noisy.pgm', () => {
+    const pgmBytes = new Uint8Array(readFileSync(resolve(process.cwd(), 'public/samples/boy_noisy.pgm')));
+    expect(inspectImageHeader(pgmBytes)).toEqual({ format: 'pgm', width: 512, height: 512 });
+
+    const marker = new TextEncoder().encode('255\n');
+    let dataOffset = -1;
+    for (let i = 0; i < 64; i++) {
+      if (
+        pgmBytes[i] === marker[0] &&
+        pgmBytes[i + 1] === marker[1] &&
+        pgmBytes[i + 2] === marker[2] &&
+        pgmBytes[i + 3] === marker[3]
+      ) {
+        dataOffset = i + 4;
+        break;
+      }
+    }
+    expect(dataOffset).toBeGreaterThan(0);
+
+    const boy = new Float64Array(512 * 512);
+    for (let i = 0; i < boy.length; i++) {
+      boy[i] = pgmBytes[dataOffset + i]! / 255.0;
+    }
+
+    const detected = autoDetectNotchCenters(boy, 512, 512, { zThresh: 6.0, maxPeaks: 8 });
+    expect(detected.map((c) => [c.y, c.x])).toEqual(golden.boy_noisy_512x512.auto_centers);
+
+    const { spectrum } = fftSpectrum(boy, 512, 512);
+    const rec = recommendPeakCandidates(spectrum, 512, 512, 4, 0.82);
+    expect(rec.map((c) => canonicalPointKey(512, 512, c.y, c.x))).toEqual(
+      golden.boy_noisy_512x512.recommended.map(([y, x]) => canonicalPointKey(512, 512, y, x)),
+    );
+
+    const { restored } = restoreWithNotch(
+      boy,
+      512,
+      512,
+      detected.map((c) => ({ y: c.y, x: c.x })),
+      1.2,
+    );
+    const [, , mean] = stats(restored);
+    expect(mean).toBeCloseTo(golden.boy_noisy_512x512.restored_mean, 5);
+  });
+
+  it('builds a valid PKZIP archive with local, central directory, and EOCD headers', () => {
+    const zip = buildZipArchive([
+      { name: 'hello.txt', data: new TextEncoder().encode('halo') },
+      { name: 'empty.bin', data: new Uint8Array(0) },
+    ]);
+    expect(zip[0]).toBe(0x50);
+    expect(zip[1]).toBe(0x4b);
+    expect(zip[2]).toBe(0x03);
+    expect(zip[3]).toBe(0x04);
+    const eocdOffset = zip.length - 22;
+    expect(zip[eocdOffset]).toBe(0x50);
+    expect(zip[eocdOffset + 1]).toBe(0x4b);
+    expect(zip[eocdOffset + 2]).toBe(0x05);
+    expect(zip[eocdOffset + 3]).toBe(0x06);
   });
 
   it('handles zero-error PSNR and small images gracefully', () => {

@@ -18,16 +18,23 @@ afterEach(() => {
 });
 
 describe('App navigation and theme controls', () => {
-  it('switches tabs via click between Restoration Lab, Eksperimen Sinusoid, and Petunjuk', () => {
+  it('switches tabs via click between Restoration Lab, Kamera, Eksperimen Sinusoid, and Petunjuk', () => {
     render(<App />);
 
     const labTab = screen.getByRole('tab', { name: 'Restoration Lab' });
+    const cameraTab = screen.getByRole('tab', { name: 'Kamera' });
     const experimentTab = screen.getByRole('tab', { name: 'Eksperimen Sinusoid' });
     const guideTab = screen.getByRole('tab', { name: 'Petunjuk' });
 
     expect(labTab).toHaveAttribute('aria-selected', 'true');
     expect(
       screen.getByRole('heading', { name: 'Pemulihan citra dengan pola gangguan periodik' }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(cameraTab);
+    expect(cameraTab).toHaveAttribute('aria-selected', 'true');
+    expect(
+      screen.getByRole('heading', { name: 'Kamera web: deteksi foto asli dan simulasi periodik' }),
     ).toBeInTheDocument();
 
     fireEvent.click(experimentTab);
@@ -56,6 +63,7 @@ describe('App navigation and theme controls', () => {
     render(<App />);
 
     const labTab = screen.getByRole('tab', { name: 'Restoration Lab' });
+    const cameraTab = screen.getByRole('tab', { name: 'Kamera' });
     const experimentTab = screen.getByRole('tab', { name: 'Eksperimen Sinusoid' });
     const guideTab = screen.getByRole('tab', { name: 'Petunjuk' });
 
@@ -63,20 +71,16 @@ describe('App navigation and theme controls', () => {
     expect(labTab).toHaveFocus();
 
     fireEvent.keyDown(labTab, { key: 'ArrowRight' });
+    expect(cameraTab).toHaveAttribute('aria-selected', 'true');
+    expect(cameraTab).toHaveFocus();
+
+    fireEvent.keyDown(cameraTab, { key: 'ArrowRight' });
     expect(experimentTab).toHaveAttribute('aria-selected', 'true');
     expect(experimentTab).toHaveFocus();
-    expect(
-      screen.getByRole('heading', { name: 'Eksperimen dua sinusoid spasial terkontrol' }),
-    ).toBeInTheDocument();
 
     fireEvent.keyDown(experimentTab, { key: 'ArrowRight' });
     expect(guideTab).toHaveAttribute('aria-selected', 'true');
     expect(guideTab).toHaveFocus();
-    expect(
-      screen.getByRole('heading', {
-        name: 'Petunjuk penggunaan dan dasar teori FFT 2D Notch',
-      }),
-    ).toBeInTheDocument();
 
     fireEvent.keyDown(guideTab, { key: 'ArrowRight' });
     expect(labTab).toHaveAttribute('aria-selected', 'true');

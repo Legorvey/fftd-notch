@@ -377,6 +377,54 @@ describe('processWorkerRequest', () => {
     expect(fftSpectrumMock).toHaveBeenCalledTimes(1);
   });
 
+  it('runs autoDetectLab and processCameraFrame in both simulation and real modes', () => {
+    const width = 32;
+    const height = 32;
+    const clean = createSmoothImage(width, height, 0.35);
+
+    const sim = processWorkerRequest({
+      id: 70,
+      type: 'processCameraFrame',
+      width,
+      height,
+      clean,
+      mode: 'simulation',
+      notchSigma: 1.2,
+    });
+    expect(sim.type).toBe('processCameraFrameResult');
+    if (sim.type !== 'processCameraFrameResult') return;
+    expect(sim.status).toBe('simulated');
+    expect(sim.metrics).not.toBeNull();
+    expect(sim.metrics!.notchFilter.psnrDb).toBeGreaterThan(sim.metrics!.noCorrection.psnrDb);
+
+    const real = processWorkerRequest({
+      id: 71,
+      type: 'processCameraFrame',
+      width,
+      height,
+      clean,
+      mode: 'real',
+      notchSigma: 1.2,
+    });
+    expect(real.type).toBe('processCameraFrameResult');
+    if (real.type !== 'processCameraFrameResult') return;
+    expect(real.metrics).toBeNull();
+    expect(['filtered', 'no_peak']).toContain(real.status);
+
+    const autoRes = processWorkerRequest({
+      id: 72,
+      type: 'autoDetectLab',
+      width,
+      height,
+      data: sim.working,
+      zThresh: 5.0,
+      maxPeaks: 4,
+    });
+    expect(autoRes.type).toBe('autoDetectLabResult');
+    if (autoRes.type !== 'autoDetectLabResult') return;
+    expect(autoRes.candidates.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('propagates worker errors as rejected promises via dspClient fallback when Worker is unavailable', async () => {
     vi.stubGlobal('Worker', undefined);
     try {
