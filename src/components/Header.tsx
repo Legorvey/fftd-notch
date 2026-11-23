@@ -1,6 +1,6 @@
 import { useRef, type KeyboardEvent } from 'react';
 
-export type ActiveTab = 'lab' | 'experiment' | 'guide';
+export type ActiveTab = 'lab' | 'camera' | 'experiment' | 'guide';
 export type ThemeMode = 'dark' | 'light';
 
 interface HeaderProps {
@@ -12,6 +12,7 @@ interface HeaderProps {
 
 const TABS: ReadonlyArray<{ id: ActiveTab; label: string }> = [
   { id: 'lab', label: 'Restoration Lab' },
+  { id: 'camera', label: 'Kamera' },
   { id: 'experiment', label: 'Eksperimen Sinusoid' },
   { id: 'guide', label: 'Petunjuk' },
 ];

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { downloadArrayAsPng, downloadCsv } from '../dsp/colormap';
+import { arrayToPngBytes, csvToBytes, downloadZip, type ZipEntry } from '../dsp/zip';
 import { periodicDistance, symmetricCenter } from '../dsp/notch';
 import type { PeakCandidate, Point2D, RestorationOutput } from '../dsp/types';
 import {
@@ -44,6 +45,9 @@ export function RestorationLabTab() {
 
   const [manualYText, setManualYText] = useState('0');
   const [manualXText, setManualXText] = useState('0');
+  const [autoMode, setAutoMode] = useState(false);
+  const [zThresh, setZThresh] = useState(6.0);
+  const [maxAutoPeaks, setMaxAutoPeaks] = useState(8);
   const [notchSigma, setNotchSigma] = useState(1.0);
   const [blurSigma, setBlurSigma] = useState(1.2);
 
@@ -66,6 +70,9 @@ export function RestorationLabTab() {
   const limitCheckboxId = useId();
   const manualYId = useId();
   const manualXId = useId();
+  const autoCheckboxId = useId();
+  const zThreshId = useId();
+  const maxAutoId = useId();
   const sigmaId = useId();
   const blurSigmaId = useId();
 
@@ -100,6 +107,7 @@ export function RestorationLabTab() {
     const loadSeq = ++sourceSeqRef.current;
     setErrorMessage(null);
     setReferenceError(null);
+    setAutoMode(false);
     setAnalyzing(true);
     try {
       const [noisySample, cleanSample] = await Promise.all([
@@ -118,6 +126,26 @@ export function RestorationLabTab() {
       if (loadSeq !== sourceSeqRef.current) return;
       setAnalyzing(false);
       setErrorMessage(err instanceof Error ? err.message : 'Gagal memuat sampel gambar bawaan.');
+    }
+  };
+
+  const handleLoadBoyNoisySample = async () => {
+    const loadSeq = ++sourceSeqRef.current;
+    setErrorMessage(null);
+    setReferenceError(null);
+    setReference(null);
+    if (referenceInputRef.current) referenceInputRef.current.value = '';
+    setAutoMode(true);
+    setAnalyzing(true);
+    try {
+      const boySample = await loadImageFromUrl('/samples/boy_noisy.pgm', 'boy_noisy.pgm', null);
+      if (loadSeq !== sourceSeqRef.current) return;
+      setCorrupted(boySample);
+      await analyzeImage(boySample, []);
+    } catch (err) {
+      if (loadSeq !== sourceSeqRef.current) return;
+      setAnalyzing(false);
+      setErrorMessage(err instanceof Error ? err.message : 'Gagal memuat sampel boy_noisy.pgm.');
     }
   };
 
@@ -163,6 +191,33 @@ export function RestorationLabTab() {
       setReferenceError(err instanceof Error ? err.message : 'Gagal membaca gambar referensi.');
     }
   };
+
+  // Run Hann-windowed MAD z-score auto-detection when autoMode is enabled.
+  useEffect(() => {
+    if (!corrupted || !autoMode) return;
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const detected = await dspClient.autoDetectLab(
+          corrupted.width,
+          corrupted.height,
+          corrupted.data,
+          zThresh,
+          maxAutoPeaks,
+        );
+        if (cancelled) return;
+        setCenters(detected.map((c) => ({ y: c.y, x: c.x })));
+      } catch (err) {
+        if (!cancelled) {
+          setErrorMessage(err instanceof Error ? err.message : 'Gagal menjalankan deteksi otomatis.');
+        }
+      }
+    }, 40);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [corrupted, autoMode, zThresh, maxAutoPeaks]);
 
   // Run notch filter restoration in Web Worker with unconditional sequence invalidation.
   useEffect(() => {
@@ -284,6 +339,42 @@ export function RestorationLabTab() {
     );
   };
 
+  const handleDownloadAllZip = async () => {
+    if (!corrupted || !spectrum || !output) return;
+    const entries: ZipEntry[] = [
+      {
+        name: 'hasil_notch.png',
+        data: await arrayToPngBytes(output.restored, corrupted.width, corrupted.height, 'gray'),
+      },
+      {
+        name: 'notch_mask.png',
+        data: await arrayToPngBytes(output.mask, corrupted.width, corrupted.height, 'gray'),
+      },
+      {
+        name: 'spektrum_fft.png',
+        data: await arrayToPngBytes(spectrum, corrupted.width, corrupted.height, 'inferno', true),
+      },
+      {
+        name: 'gaussian_blur.png',
+        data: await arrayToPngBytes(output.blurred, corrupted.width, corrupted.height, 'gray'),
+      },
+    ];
+    if (output.metrics) {
+      entries.push({
+        name: 'metrik_restoration.csv',
+        data: csvToBytes(
+          ['Metode', 'PSNR_dB', 'SSIM'],
+          [
+            ['Tanpa perbaikan', output.metrics.noCorrection.psnrDb, output.metrics.noCorrection.ssim],
+            ['Gaussian blur', output.metrics.gaussianBlur.psnrDb, output.metrics.gaussianBlur.ssim],
+            ['Notch filter', output.metrics.notchFilter.psnrDb, output.metrics.notchFilter.ssim],
+          ],
+        ),
+      });
+    }
+    downloadZip(entries, 'hasil_restoration_fft2d.zip');
+  };
+
   return (
     <section
       id="panel-lab"
@@ -306,7 +397,7 @@ export function RestorationLabTab() {
               Seluruh pemrosesan FFT 2D berjalan lokal di browser Anda tanpa mengirim gambar ke server.
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
             {analyzing ? (
               <span className="busy-pill" role="status" aria-live="polite">
                 Menghitung FFT 2D...
@@ -315,18 +406,21 @@ export function RestorationLabTab() {
             <button type="button" className="btn btn-primary" onClick={handleLoadSample}>
               Muat sampel Camera + gangguan
             </button>
+            <button type="button" className="btn" onClick={handleLoadBoyNoisySample}>
+              Muat sampel Boy Noisy (PGM)
+            </button>
           </div>
         </div>
 
         <div className="upload-grid">
           <div className="file-dropzone">
             <label htmlFor={corruptedInputId} className="file-dropzone-label">
-              Gambar terganggu (PNG, JPG, WebP)
+              Gambar terganggu (PNG, JPG, WebP, PGM)
             </label>
             <input
               id={corruptedInputId}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept=".png,.jpg,.jpeg,.webp,.pgm,image/png,image/jpeg,image/webp"
               className="file-input"
               onChange={handleCorruptedUpload}
             />
@@ -345,7 +439,7 @@ export function RestorationLabTab() {
               ref={referenceInputRef}
               id={referenceInputId}
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept=".png,.jpg,.jpeg,.webp,.pgm,image/png,image/jpeg,image/webp"
               className="file-input"
               onChange={handleReferenceUpload}
             />
@@ -434,6 +528,55 @@ export function RestorationLabTab() {
                   Satu titik (baris y, kolom x) otomatis dipasangkan dengan koordinat simetrisnya terhadap pusat DC.
                 </p>
               </div>
+
+              <div className="checkbox-row" style={{ marginTop: 0 }}>
+                <input
+                  id={autoCheckboxId}
+                  type="checkbox"
+                  checked={autoMode}
+                  onChange={(e) => setAutoMode(e.target.checked)}
+                />
+                <label htmlFor={autoCheckboxId}>
+                  Deteksi otomatis titik gangguan (jendela Hann + MAD Z-score)
+                </label>
+              </div>
+
+              {autoMode ? (
+                <div className="control-grid">
+                  <div className="field">
+                    <label htmlFor={zThreshId} className="field-label">
+                      <span>Sensitivitas (ambang z)</span>
+                      <span className="mono-value">{zThresh.toFixed(1)}</span>
+                    </label>
+                    <input
+                      id={zThreshId}
+                      type="range"
+                      min={3.0}
+                      max={15.0}
+                      step={0.5}
+                      value={zThresh}
+                      onChange={(e) => setZThresh(Number(e.target.value))}
+                      className="range-input"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor={maxAutoId} className="field-label">
+                      <span>Maksimum titik otomatis</span>
+                      <span className="mono-value">{maxAutoPeaks}</span>
+                    </label>
+                    <input
+                      id={maxAutoId}
+                      type="range"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={maxAutoPeaks}
+                      onChange={(e) => setMaxAutoPeaks(Number(e.target.value))}
+                      className="range-input"
+                    />
+                  </div>
+                </div>
+              ) : null}
 
               <form onSubmit={handleAddManualPoint} className="control-grid">
                 <div className="field">
@@ -789,6 +932,13 @@ export function RestorationLabTab() {
                   onClick={handleDownloadMetricsCsv}
                 >
                   Unduh CSV metrik
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleDownloadAllZip}
+                >
+                  Unduh semua (ZIP)
                 </button>
               </div>
             </div>

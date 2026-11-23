@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { CameraTab } from './components/CameraTab';
 import { GuideTab } from './components/GuideTab';
 import { Header, type ActiveTab, type ThemeMode } from './components/Header';
 import { RestorationLabTab } from './components/RestorationLabTab';
@@ -21,6 +22,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('lab');
   const [visitedTabs, setVisitedTabs] = useState<Record<ActiveTab, boolean>>({
     lab: true,
+    camera: false,
     experiment: false,
     guide: false,
   });
@@ -63,6 +65,14 @@ export function App() {
             <RestorationLabTab />
           </ErrorBoundary>
         </div>
+
+        {visitedTabs.camera ? (
+          <div hidden={activeTab !== 'camera'}>
+            <ErrorBoundary inline>
+              <CameraTab />
+            </ErrorBoundary>
+          </div>
+        ) : null}
 
         {visitedTabs.experiment ? (
           <div hidden={activeTab !== 'experiment'}>
