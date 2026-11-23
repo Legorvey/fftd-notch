@@ -32,12 +32,12 @@ const BLOB_REVOKE_MS = 60_000;
 
 export type ColorMapMode = 'gray' | 'inferno';
 
-export function renderArrayToRGBA(
+export function renderArrayToRGBAInto(
   data: Float64Array,
+  out: Uint8ClampedArray,
   mode: ColorMapMode,
   autoScale = false,
-): Uint8ClampedArray<ArrayBuffer> {
-  const out = new Uint8ClampedArray(new ArrayBuffer(data.length * 4));
+): void {
   let lo = 0;
   let hi = 1;
 
@@ -80,9 +80,19 @@ export function renderArrayToRGBA(
       out[o + 3] = 255;
     }
   }
+}
 
+export function renderArrayToRGBA(
+  data: Float64Array,
+  mode: ColorMapMode,
+  autoScale = false,
+): Uint8ClampedArray<ArrayBuffer> {
+  const out = new Uint8ClampedArray(new ArrayBuffer(data.length * 4));
+  renderArrayToRGBAInto(data, out, mode, autoScale);
   return out;
 }
+
+const canvasImageDataCache = new WeakMap<HTMLCanvasElement, ImageData>();
 
 export function drawArrayToCanvas(
   canvas: HTMLCanvasElement,
@@ -97,8 +107,14 @@ export function drawArrayToCanvas(
   if (canvas.height !== height) canvas.height = height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
-  const rgba = renderArrayToRGBA(data, mode, autoScale);
-  ctx.putImageData(new ImageData(rgba, width, height), 0, 0);
+
+  let imgData = canvasImageDataCache.get(canvas);
+  if (!imgData || imgData.width !== width || imgData.height !== height) {
+    imgData = ctx.createImageData(width, height);
+    canvasImageDataCache.set(canvas, imgData);
+  }
+  renderArrayToRGBAInto(data, imgData.data, mode, autoScale);
+  ctx.putImageData(imgData, 0, 0);
 }
 
 function sanitizeFilename(name: string, fallback: string): string {

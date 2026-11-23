@@ -13,7 +13,7 @@ interface QueuedChannelSlot {
   reject: (err: Error) => void;
 }
 
-type CoalesceChannel = 'restore' | 'experiment';
+type CoalesceChannel = 'restore' | 'experiment' | 'autoDetect' | 'camera';
 
 const WORKER_TIMEOUT_MS = 30_000;
 
@@ -243,7 +243,7 @@ class DspClient {
     maxPeaks = 8,
   ): Promise<PeakCandidate[]> {
     const id = this.nextId++;
-    const res = await this.dispatchImmediate({
+    const res = await this.dispatchCoalesced('autoDetect', {
       id,
       type: 'autoDetectLab',
       width,
@@ -266,7 +266,7 @@ class DspClient {
     notchSigma: number;
   }) {
     const id = this.nextId++;
-    const res = await this.dispatchImmediate({
+    const res = await this.dispatchCoalesced('camera', {
       id,
       type: 'processCameraFrame',
       ...params,
